@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestor de Colecciones & Finanzas</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- Header -->
+    <header>
+        <div class="container header-content">
+            <div class="logo">
+                <span class="icon">📚</span>
+                <h1>Gestor de Colecciones</h1>
+            </div>
+            <div class="badges">
+                <span class="badge success">Objetivo: 5 Colecciones</span>
+                <span class="badge warning" id="global-missing-count">Calculando...</span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        
+        <!-- Sección Financiera -->
+        <section class="finance-panel">
+            <!-- Inputs -->
+            <div class="inputs-grid">
+                <div class="card input-card">
+                    <label>Ingresos Mensuales</label>
+                    <div class="input-wrapper">
+                        <span>€</span>
+                        <input type="number" id="salary" value="1084.20">
+                    </div>
+                </div>
+                <div class="card input-card">
+                    <label>Gastos Fijos</label>
+                    <div class="input-wrapper minus">
+                        <span>€</span>
+                        <input type="number" id="expenses" value="600.00">
+                    </div>
+                </div>
+                <div class="card slider-card">
+                    <div class="slider-header">
+                        <label>Inversión Mensual</label>
+                        <span id="allocation-display">30%</span>
+                    </div>
+                    <input type="range" id="allocation" min="0" max="100" value="30">
+                    <div class="slider-footer">
+                        Disponible: <span id="hobby-budget">€0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Estrategia -->
+            <div class="strategy-box">
+                <div class="strategy-icon">🐷</div>
+                <div class="strategy-text">
+                    <h3>Plan de Ataque</h3>
+                    <p>
+                        Para el Master Set de Magic (<span id="magic-cost">€0</span>), guarda 
+                        <strong class="text-green" id="savings-suggestion">€0</strong> en la hucha.
+                        Usa los <strong class="text-blue" id="spending-money">€0</strong> restantes para mangas sueltos.
+                    </p>
+                    <div class="strategy-time">Tiempo estimado: <span id="months-to-finish">--</span> Meses</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Contenedor de Colecciones -->
+        <div id="collections-container" class="collections-grid">
+            <!-- Las colecciones se generarán aquí con JS -->
+        </div>
+
+    </main>
+
+    <!-- Modal Importar CSV -->
+    <div id="csv-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Importar CSV de Magic</h2>
+                <button id="close-modal">×</button>
+            </div>
+            <p>Abre tu archivo <code>.csv</code>, copia todo el texto y pégalo abajo. El sistema buscará cartas con Regular:0 y Foils:0.</p>
+            <textarea id="csv-input" placeholder="Name,Regular,Foils,#,Set,Price..."></textarea>
+            <div class="modal-actions">
+                <button class="btn btn-primary" id="process-csv">Procesar Datos</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,376 @@
+:root {
+    --bg-dark: #0f172a;
+    --bg-card: #1e293b;
+    --bg-card-hover: #334155;
+    --text-main: #f8fafc;
+    --text-muted: #94a3b8;
+    --primary: #6366f1; /* Indigo */
+    --success: #10b981; /* Emerald */
+    --danger: #f43f5e; /* Rose */
+    --accent: #06b6d4; /* Cyan */
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    background-color: var(--bg-dark);
+    color: var(--text-main);
+    font-family: system-ui, -apple-system, sans-serif;
+    line-height: 1.5;
+}
+
+.container {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+/* Header */
+header {
+    background-color: #1e293b99;
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid #334155;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    padding: 1rem 0;
+}
+
+.header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.logo h1 {
+    font-size: 1.25rem;
+    background: linear-gradient(to right, #fff, #94a3b8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.badges {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.badge {
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid rgba(255,255,255,0.1);
+}
+
+.badge.success { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+.badge.warning { background: rgba(244, 63, 94, 0.2); color: #fb7185; }
+
+/* Finance Panel */
+.finance-panel {
+    margin-top: 2rem;
+    display: grid;
+    gap: 1.5rem;
+}
+
+.inputs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.card {
+    background-color: var(--bg-card);
+    border: 1px solid #334155;
+    border-radius: 1rem;
+    padding: 1.25rem;
+}
+
+.input-card label {
+    display: block;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.input-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.input-wrapper span {
+    color: var(--text-muted);
+    font-size: 1.25rem;
+}
+
+.input-wrapper input {
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 1.5rem;
+    font-weight: 700;
+    width: 100%;
+    outline: none;
+}
+
+.slider-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+}
+
+input[type="range"] {
+    width: 100%;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+/* Strategy Box */
+.strategy-box {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(15, 23, 42, 0.5));
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    display: flex;
+    gap: 1rem;
+    align-items: start;
+}
+
+.strategy-icon { font-size: 2rem; }
+.text-green { color: #34d399; }
+.text-blue { color: #818cf8; }
+.strategy-time { 
+    margin-top: 0.5rem; 
+    font-size: 0.75rem; 
+    text-transform: uppercase; 
+    color: var(--text-muted); 
+    font-weight: bold; 
+}
+
+/* Collections Grid */
+.collections-grid {
+    display: grid;
+    gap: 2rem;
+    margin-top: 2rem;
+    padding-bottom: 4rem;
+}
+
+.collection-card {
+    background-color: var(--bg-card);
+    border: 1px solid #334155;
+    border-radius: 1rem;
+    overflow: hidden;
+    transition: all 0.2s;
+}
+
+.collection-header {
+    padding: 1.5rem;
+}
+
+.header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 1rem;
+}
+
+.info-flex {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.col-icon {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 0.75rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
+    background: #334155;
+}
+
+.col-data h3 { font-size: 1.25rem; margin-bottom: 0.25rem; }
+.col-meta { font-size: 0.85rem; color: var(--text-muted); }
+
+.money-data { text-align: right; }
+.money-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; display: block; }
+.money-value { font-size: 1.5rem; font-weight: 700; }
+
+.progress-container {
+    height: 0.75rem;
+    background: #0f172a;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 1rem;
+}
+
+.progress-bar {
+    height: 100%;
+    background: var(--primary);
+    transition: width 0.5s ease-out;
+}
+
+.controls {
+    display: flex;
+    justify-content: space-between;
+}
+
+.btn {
+    background: transparent;
+    border: 1px solid #475569;
+    color: var(--text-muted);
+    padding: 0.5rem 1rem;
+    border-radius: 0.5rem;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s;
+}
+
+.btn:hover { background: #334155; color: white; }
+.btn-primary { background: var(--primary); color: white; border: none; }
+.btn-primary:hover { background: #4f46e5; }
+
+/* Collapsible Content */
+.collection-body {
+    background-color: #020617;
+    border-top: 1px solid #334155;
+    padding: 1.5rem;
+    display: none; /* Hidden by default */
+}
+
+.collection-body.open { display: block; animation: slideDown 0.3s ease-out; }
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Grids for Items */
+.items-list-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 0.75rem;
+}
+
+.item-row {
+    background: var(--bg-card);
+    border: 1px solid #334155;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    cursor: pointer;
+}
+
+.item-row.owned { opacity: 0.5; border-color: var(--primary); background: rgba(99, 102, 241, 0.1); }
+.check-box { width: 1.25rem; height: 1.25rem; border: 2px solid #475569; border-radius: 4px; display: grid; place-items: center; }
+.item-row.owned .check-box { background: var(--primary); border-color: var(--primary); }
+
+/* MANGA COVERS GRID */
+.manga-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 1rem;
+}
+
+.manga-cover {
+    aspect-ratio: 2/3;
+    background: #f1f5f9;
+    position: relative;
+    border-radius: 4px;
+    cursor: pointer;
+    overflow: hidden;
+    transition: transform 0.2s;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+}
+
+.manga-cover:hover { transform: translateY(-5px); z-index: 10; }
+.manga-cover.owned { filter: grayscale(100%) opacity(0.4); transform: scale(0.95); }
+
+/* Estilo específico para simular portada Ivrea/Planeta */
+.cover-art {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+.spine-top { height: 15%; background: white; color: black; font-size: 8px; display: flex; align-items: center; justify-content: center; text-transform: uppercase; font-weight: bold; }
+.spine-bottom { height: 10%; background: black; color: white; display: flex; align-items: center; justify-content: center; font-size: 8px; font-weight: bold; }
+.spine-main { flex: 1; display: flex; align-items: center; justify-content: center; position: relative; }
+
+/* Colores por defecto */
+.spine-main { background: #cbd5e1; }
+.col-theme-orange .spine-main { background: #ea580c; } /* Slam Dunk */
+.col-theme-stone .spine-main { background: #57534e; } /* Vagabond */
+.col-theme-blue .spine-main { background: #0e7490; } /* Vinland */
+.col-theme-yellow .spine-main { background: #eab308; } /* Dragon Ball */
+
+.cover-number {
+    font-size: 3rem;
+    font-weight: 900;
+    color: white;
+    text-shadow: 2px 2px 0px rgba(0,0,0,0.5);
+    z-index: 2;
+}
+
+.cover-title-vertical {
+    position: absolute;
+    transform: rotate(-90deg);
+    font-size: 1.5rem;
+    font-weight: 900;
+    opacity: 0.2;
+    color: white;
+    white-space: nowrap;
+}
+
+.owned-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(16, 185, 129, 0.6);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+}
+
+.manga-cover.owned .owned-overlay { display: flex; }
+
+/* Modal */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.8);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+.hidden { display: none; }
+.modal-content {
+    background: var(--bg-card);
+    padding: 2rem;
+    border-radius: 1rem;
+    width: 90%;
+    max-width: 600px;
+    border: 1px solid #334155;
+}
+.modal-header { display: flex; justify-content: space-between; margin-bottom: 1rem; }
+textarea { width: 100%; height: 200px; background: #0f172a; color: white; border: 1px solid #334155; padding: 1rem; margin: 1rem 0; border-radius: 0.5rem; }
