@@ -1,11 +1,11 @@
 // --- DATOS INICIALES ---
 
-// Helper para crear array de 'false' con algunos 'true' al principio
+// Helper para crear array
 function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
 
-// Datos de cartas FIJOS - Lista depurada del Master Set
+// Datos de cartas FIJOS
 const initialMagicCards = [
     { name: "Absolute Virtue", price: 3.49 },
     { name: "Aerith Gainsborough", price: 1.79 },
@@ -20,6 +20,7 @@ const initialMagicCards = [
     { name: "Clive, Ifrit's Dominant // Ifrit, Warden of Inferno", price: 2.98 },
     { name: "Cloud, Midgar Mercenary", price: 17.98 },
     { name: "Dark Confidant", price: 3.66 },
+    // Relleno hasta 46
     ...Array(33).fill(null).map((_, i) => ({ name: `Carta Master Set #${i + 14}`, price: 2.50 }))
 ];
 
@@ -27,6 +28,8 @@ let appData = {
     salary: 1084.20,
     expenses: 600.00,
     allocation: 30,
+    currentSavings: 2100, // <--- LO QUE LLEVAS AHORRADO
+    savingsGoal: 10000,   // <--- META FINAL
     collections: [
         {
             id: 1,
@@ -38,7 +41,7 @@ let appData = {
             expanded: false,
             theme: "purple",
             icon: "🔮",
-            priority: 0 // Crítico (Ahorro separado)
+            priority: 0 
         },
         {
             id: 2,
@@ -53,7 +56,7 @@ let appData = {
             icon: "🗡️",
             folder: "Vagabond",
             ext: "jpg",
-            priority: 2 // Media
+            priority: 2 
         },
         {
             id: 3,
@@ -68,7 +71,7 @@ let appData = {
             icon: "🏀",
             folder: "SlamDunk",
             ext: "webp",
-            priority: 1 // Alta
+            priority: 1 
         },
         {
             id: 4,
@@ -83,7 +86,7 @@ let appData = {
             icon: "🛡️",
             folder: "VinlandSaga",
             ext: "webp",
-            priority: 3 // Baja
+            priority: 3 
         },
         {
             id: 5,
@@ -98,7 +101,7 @@ let appData = {
             icon: "🐉",
             folder: "DragonBall",
             ext: "webp",
-            priority: 2 // Media
+            priority: 2 
         }
     ]
 };
@@ -116,6 +119,39 @@ const monthsDisplay = document.getElementById('months-to-finish');
 const container = document.getElementById('collections-container');
 const globalMissingDisplay = document.getElementById('global-missing-count');
 
+// Inyectamos el HTML de la barra de ahorro dinámicamente si no existe
+const financePanel = document.querySelector('.finance-panel');
+if (!document.getElementById('savings-goal-panel')) {
+    const goalDiv = document.createElement('div');
+    goalDiv.id = 'savings-goal-panel';
+    goalDiv.className = 'card';
+    goalDiv.style.gridColumn = "1 / -1"; // Ocupar todo el ancho
+    goalDiv.style.background = "linear-gradient(to right, #1e293b, #0f172a)";
+    goalDiv.style.border = "1px solid #eab308"; // Borde dorado
+    
+    goalDiv.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+            <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
+                🏆 META 10K <span style="font-size:0.8rem; color:#94a3b8; font-weight:normal">(Ahorro Total)</span>
+            </div>
+            <div style="text-align:right">
+                <span id="current-savings-text" style="font-size:1.2rem; font-weight:bold; color:white">€2,100</span>
+                <span style="color:#64748b"> / €10,000</span>
+            </div>
+        </div>
+        <div style="height:1.5rem; background:#334155; border-radius:999px; overflow:hidden; position:relative;">
+            <div id="savings-bar" style="height:100%; width:21%; background:linear-gradient(90deg, #eab308, #f59e0b); transition:width 1s;"></div>
+            <div id="savings-percent" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; color:white; text-shadow:0 1px 2px black;">21%</div>
+        </div>
+        <div style="margin-top:0.5rem; display:flex; justify-content:space-between; font-size:0.85rem;">
+            <div style="color:#94a3b8">Llevas ahorrado: <strong style="color:white">€${appData.currentSavings}</strong></div>
+            <div style="color:#34d399">Este mes sumas: <strong id="monthly-add">+€0.00</strong></div>
+        </div>
+    `;
+    // Insertamos justo después de los inputs y antes de la estrategia
+    financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
+}
+
 // --- FORMATTERS ---
 const formatMoney = (amount) => {
     return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
@@ -126,8 +162,9 @@ const formatMoney = (amount) => {
 function calculateFinances() {
     const disposable = appData.salary - appData.expenses;
     const hobbyBudget = disposable * (appData.allocation / 100);
+    const generalSavings = disposable - hobbyBudget; // El 70% que NO tocas
     
-    // 1. Calcular Totales y Estado de Magic
+    // 1. Totales y Magic
     let totalCostNeeded = 0;
     let totalItemsNeeded = 0;
     let magicRemaining = 0;
@@ -153,48 +190,59 @@ function calculateFinances() {
         }
     });
 
-    // 2. Definir Presupuestos (Si Magic está completo, todo va a compras)
-    let savings = isMagicComplete ? 0 : hobbyBudget * 0.60;
-    let spending = hobbyBudget - savings;
+    // 2. Presupuestos y Estrategia
+    // Si Magic está completo, el dinero de la hucha mágica (savings) se libera para mangas
+    // PERO el "General Savings" (el 70%) sigue intacto para la Meta 10K.
+    let magicPiggyBank = isMagicComplete ? 0 : hobbyBudget * 0.60;
+    let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-    // 3. GENERADOR DE ESTRATEGIA DE COMPRA (Simulación)
+    // ACTUALIZAR BARRA 10K
+    // Ahorro total del mes = (Ahorro General 70%) + (Hucha Magic si no se gasta inmediatamente, pero asumiremos que Magic se gasta).
+    // Para simplificar: La barra crece con el "Ahorro General" (lo que no metes en vicios).
+    const monthlyAdd = generalSavings;
+    const projectedTotal = appData.currentSavings + monthlyAdd;
+    const progressPercent = (appData.currentSavings / appData.savingsGoal) * 100;
+    const projectedPercent = (projectedTotal / appData.savingsGoal) * 100;
+
+    document.getElementById('savings-bar').style.width = `${progressPercent}%`;
+    document.getElementById('savings-percent').innerText = `${progressPercent.toFixed(1)}%`;
+    document.getElementById('current-savings-text').innerText = formatMoney(appData.currentSavings);
+    document.getElementById('monthly-add').innerText = `+${formatMoney(monthlyAdd)}`;
+
+
+    // 3. GENERADOR DE ESTRATEGIA (Algoritmo de Prioridad)
     let recommendations = [];
-    let tempBudget = spending;
+    let tempBudget = spendingMoney;
     
-    // Filtrar colecciones incompletas (excluyendo Magic que va por 'savings')
     let candidateCollections = appData.collections
-        .filter(c => c.id !== 1) // No Magic
+        .filter(c => c.id !== 1) // Magic va por separado
         .map(c => {
-            // Clonamos para simulación
             return {
                 ...c,
-                nextIndex: c.ownedList.indexOf(false), // Primer tomo que falta
+                nextIndex: c.ownedList.indexOf(false),
                 simulatedCount: 0
             };
         })
-        .filter(c => c.nextIndex !== -1); // Solo las que faltan cosas
+        .filter(c => c.nextIndex !== -1);
 
-    // Ordenar por prioridad (1: Alta, 2: Media, 3: Baja)
-    candidateCollections.sort((a, b) => a.priority - b.priority);
+    // Ordenar: 1. Prioridad (menor es mejor), 2. Precio (menor es mejor para rellenar huecos)
+    candidateCollections.sort((a, b) => a.priority - b.priority || a.pricePerItem - b.pricePerItem);
 
-    // Bucle "Greedy": Comprar lo más prioritario posible mientras haya dinero
-    // Intentamos comprar 1 de cada prioridad alta, luego media, etc., y repetimos
     let safetyLoop = 0;
-    while (tempBudget > 0 && candidateCollections.length > 0 && safetyLoop < 100) {
+    while (tempBudget > 0 && candidateCollections.length > 0 && safetyLoop < 50) {
         let boughtSomething = false;
         safetyLoop++;
 
         for (let col of candidateCollections) {
-            // Si nos alcanza para el siguiente tomo
-            if (col.pricePerItem <= tempBudget) {
+            // Check si hay dinero y si quedan items
+            if (col.pricePerItem <= tempBudget && (col.nextIndex + col.simulatedCount < col.totalItems)) {
                 tempBudget -= col.pricePerItem;
                 col.simulatedCount++;
                 
-                // Añadir a recomendaciones
                 let existingRec = recommendations.find(r => r.name === col.name);
                 if (existingRec) {
-                    existingRec.items.push(col.nextIndex + 1 + existingRec.count); // +count porque ya avanzamos
+                    existingRec.items.push(col.nextIndex + existingRec.count); // Ajuste índice
                     existingRec.count++;
                 } else {
                     recommendations.push({
@@ -204,30 +252,23 @@ function calculateFinances() {
                         items: [col.nextIndex + 1]
                     });
                 }
-                
-                // Actualizar simulación por si queremos comprar otro del mismo
-                // (En este bucle simple, priorizamos variedad por prioridad)
                 boughtSomething = true;
-                
-                // Opción: Romper el for para volver a empezar desde la prioridad más alta
-                // Esto asegura que si sobra dinero, volvemos a intentar comprar Slam Dunk antes que Vinland
-                break; 
+                break; // Reiniciar bucle para respetar prioridad absoluta
             }
         }
-        
-        if (!boughtSomething) break; // No alcanza para nada más
+        if (!boughtSomething) break;
     }
 
-    // 4. Renderizado en DOM
+    // 4. Renderizado Textos
     allocationDisplay.innerText = `${appData.allocation}%`;
     hobbyBudgetDisplay.innerText = formatMoney(hobbyBudget);
-    savingsDisplay.innerText = formatMoney(savings);
-    spendingDisplay.innerText = formatMoney(spending);
+    savingsDisplay.innerText = formatMoney(magicPiggyBank);
+    spendingDisplay.innerText = formatMoney(spendingMoney);
     magicCostDisplay.innerText = formatMoney(magicRemaining);
     monthsDisplay.innerText = months < 900 ? months : "∞";
     globalMissingDisplay.innerText = `Faltan ${totalItemsNeeded} items`;
 
-    // 5. Inyectar HTML del Plan Detallado
+    // 5. Inyectar Plan HTML
     const stratText = document.querySelector('.strategy-text');
     let detailsDiv = document.getElementById('plan-details');
     
@@ -243,9 +284,9 @@ function calculateFinances() {
     let planHTML = '';
     
     if (isMagicComplete && recommendations.length === 0 && totalItemsNeeded === 0) {
-        planHTML = '<div style="color:#34d399; font-weight:bold">¡Felicidades! Has completado todas tus colecciones.</div>';
+        planHTML = '<div style="color:#34d399; font-weight:bold">¡Todo Completado! Eres el rey del coleccionismo.</div>';
     } else {
-        planHTML += `<h4 style="font-size:0.75rem; text-transform:uppercase; color:#94a3b8; margin-bottom:0.5rem; letter-spacing:1px">Lista de la Compra Sugerida:</h4>`;
+        planHTML += `<h4 style="font-size:0.75rem; text-transform:uppercase; color:#94a3b8; margin-bottom:0.5rem; letter-spacing:1px">Lista de Compra Prioritaria:</h4>`;
         
         if (recommendations.length > 0) {
             planHTML += `<ul style="list-style:none; font-size:0.9rem; padding:0;">`;
@@ -254,19 +295,22 @@ function calculateFinances() {
                     <span style="font-size:1.2rem">${rec.icon}</span>
                     <div>
                         <div style="font-weight:bold; color:#fff">${rec.name}</div>
-                        <div style="font-size:0.8rem; color:#94a3b8">Comprar tomos: <strong style="color:#818cf8">${rec.items.join(', ')}</strong></div>
+                        <div style="font-size:0.8rem; color:#94a3b8">Tomos: <strong style="color:#818cf8">${rec.items.join(', ')}</strong></div>
                     </div>
                 </li>`;
             });
             planHTML += `</ul>`;
-        } else if (spending > 0) {
-            planHTML += `<div style="font-style:italic; color:#94a3b8; font-size:0.85rem">No alcanza para ningún tomo completo hoy. ¡Ahorra el excedente!</div>`;
+            
+            if (tempBudget > 1) {
+                 planHTML += `<div style="font-size:0.8rem; color:#94a3b8; margin-top:0.5rem;">Sobra: <strong>${formatMoney(tempBudget)}</strong> (A la hucha Magic)</div>`;
+            }
+        } else if (spendingMoney > 0) {
+            planHTML += `<div style="font-style:italic; color:#94a3b8; font-size:0.85rem">No alcanza para ningún tomo. ¡Todo a la hucha!</div>`;
         }
 
-        // Resumen de Hucha
         if (!isMagicComplete) {
             planHTML += `<div style="margin-top:0.75rem; font-size:0.85rem; background:rgba(16, 185, 129, 0.1); padding:0.5rem; border-radius:0.5rem; border:1px solid rgba(16, 185, 129, 0.2)">
-                🐷 Hucha Magic: <strong style="color:#34d399">+${formatMoney(savings)}</strong> este mes.
+                🔮 Para Magic: Guarda <strong style="color:#34d399">${formatMoney(magicPiggyBank)}</strong>
             </div>`;
         }
     }
@@ -274,13 +318,12 @@ function calculateFinances() {
     detailsDiv.innerHTML = planHTML;
 }
 
-// --- RENDER FUNCTIONS ---
+// --- RENDER FUNCTIONS (IGUAL QUE ANTES) ---
 
 function renderCollections() {
     container.innerHTML = '';
 
     appData.collections.forEach((col, colIndex) => {
-        // Calcular estado de la coleccion
         let ownedCount = 0;
         let totalCount = 0;
         let remainingCost = 0;
@@ -298,12 +341,10 @@ function renderCollections() {
         const progress = (ownedCount / totalCount) * 100;
         const isCompleted = ownedCount >= totalCount;
 
-        // Crear elemento Card
         const card = document.createElement('div');
-        card.id = `col-${col.id}`; // ID ÚNICO PARA ACTUALIZACIONES PARCIALES
+        card.id = `col-${col.id}`;
         card.className = 'collection-card';
         
-        // Header HTML
         const headerHTML = `
             <div class="collection-header">
                 <div class="header-top">
@@ -333,7 +374,6 @@ function renderCollections() {
             </div>
         `;
 
-        // Body HTML (Items)
         const bodyDiv = document.createElement('div');
         bodyDiv.className = `collection-body ${col.expanded ? 'open' : ''}`;
         
@@ -357,14 +397,12 @@ function renderCollections() {
                 });
                 bodyDiv.appendChild(listGrid);
             } else {
-                // Manga Grid
                 const mangaGrid = document.createElement('div');
                 mangaGrid.className = 'manga-grid';
                 col.ownedList.forEach((isOwned, idx) => {
                     const cover = document.createElement('div');
                     cover.className = `manga-cover ${col.theme} ${isOwned ? 'owned' : ''}`;
                     
-                    // LÓGICA DE IMÁGENES: Usa la carpeta si existe
                     if (col.folder && col.ext) {
                         const imgPath = `${col.folder}/${idx + 1}.${col.ext}`;
                         cover.innerHTML = `
@@ -375,7 +413,6 @@ function renderCollections() {
                             <div class="owned-overlay">✔</div>
                         `;
                     } else {
-                        // Generador CSS para Vinland
                         cover.innerHTML = `
                             <div class="cover-art">
                                 <div class="spine-top">${col.publisher}</div>
@@ -412,19 +449,15 @@ window.toggleExpand = (id) => {
     }
 }
 
-// **FUNCIÓN OPTIMIZADA: Actualiza sin parpadear**
 window.toggleItem = (colId, idx) => {
     const col = appData.collections.find(c => c.id === colId);
     if (!col) return;
 
-    // 1. Actualizar Datos
     col.ownedList[idx] = !col.ownedList[idx];
     const isOwned = col.ownedList[idx];
 
-    // 2. Recalcular Finanzas Globales
     calculateFinances();
 
-    // 3. Actualizar DOM del Elemento Específico
     const card = document.getElementById(`col-${colId}`);
     if (!card) return;
 
@@ -442,7 +475,6 @@ window.toggleItem = (colId, idx) => {
         }
     }
 
-    // 4. Actualizar Cabecera
     let ownedCount = col.ownedList.filter(Boolean).length;
     let totalCount = col.type === 'cards' ? col.items.length : col.totalItems;
     let remainingCost = 0;
