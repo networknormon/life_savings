@@ -26,7 +26,7 @@ const initialMagicCards = [
 
 let appData = {
     salary: 1084.20,
-    expenses: 600.00,
+    expenses: 329.92,
     allocation: 30,
     currentSavings: 2100, // <--- LO QUE LLEVAS AHORRADO
     savingsGoal: 10000,   // <--- META FINAL
@@ -41,7 +41,7 @@ let appData = {
             expanded: false,
             theme: "purple",
             icon: "🔮",
-            priority: 0 
+            priority: 3 
         },
         {
             id: 2,
@@ -56,7 +56,7 @@ let appData = {
             icon: "🗡️",
             folder: "Vagabond",
             ext: "jpg",
-            priority: 2 
+            priority: 1 
         },
         {
             id: 3,
@@ -71,7 +71,7 @@ let appData = {
             icon: "🏀",
             folder: "SlamDunk",
             ext: "webp",
-            priority: 1 
+            priority: 2 
         },
         {
             id: 4,
@@ -86,7 +86,7 @@ let appData = {
             icon: "🛡️",
             folder: "VinlandSaga",
             ext: "webp",
-            priority: 3 
+            priority: 1 
         },
         {
             id: 5,
@@ -106,7 +106,6 @@ let appData = {
     ]
 };
 
-// --- DOM ELEMENTS ---
 const salaryInput = document.getElementById('salary');
 const expensesInput = document.getElementById('expenses');
 const allocationInput = document.getElementById('allocation');
@@ -119,7 +118,6 @@ const monthsDisplay = document.getElementById('months-to-finish');
 const container = document.getElementById('collections-container');
 const globalMissingDisplay = document.getElementById('global-missing-count');
 
-// Inyectamos el HTML de la barra de ahorro dinámicamente si no existe
 const financePanel = document.querySelector('.finance-panel');
 if (!document.getElementById('savings-goal-panel')) {
     const goalDiv = document.createElement('div');
