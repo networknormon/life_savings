@@ -506,5 +506,10 @@ allocationInput.addEventListener('input', (e) => { appData.allocation = parseInt
 
 
 // --- INIT ---
+// Sincronizar inputs con los datos iniciales de appData
+salaryInput.value = appData.salary;
+expensesInput.value = appData.expenses;
+allocationInput.value = appData.allocation;
+
 calculateFinances();
 renderCollections();
