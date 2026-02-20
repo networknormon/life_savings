@@ -6,6 +6,30 @@
     <title>Gestor de Colecciones & Finanzas</title>
     <link rel="stylesheet" href="style.css">
 </head>
+<head>
+    <link rel="stylesheet" href="style.css">
+    
+    <script>
+        const hash = window.location.hash;
+        let token = localStorage.getItem('cognito_token');
+
+        if (hash.includes("access_token=")) {
+            const urlParams = new URLSearchParams(hash.replace('#', '?'));
+            token = urlParams.get('access_token');
+            localStorage.setItem('cognito_token', token);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        if (!token) {
+            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+        }
+        
+        function logout() {
+            localStorage.removeItem('cognito_token');
+            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+        }
+    </script>
+</head>
 <body>
 
     <!-- Header -->
@@ -19,6 +43,11 @@
                 <span class="badge success">Objetivo: 5 Colecciones</span>
                 <span class="badge warning" id="global-missing-count">Calculando...</span>
             </div>
+        </div>
+        <div class="badges">
+            <span class="badge success">Objetivo: 5 Colecciones</span>
+            <span class="badge warning" id="global-missing-count">Calculando...</span>
+            <button onclick="logout()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--danger); color: var(--danger);">Salir</button>
         </div>
     </header>
 
