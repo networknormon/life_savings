@@ -116,7 +116,21 @@ function loadDataFromDynamo() {
             console.log("Datos cargados desde la nube ☁️");
             if (data.Item.collectionsData) {
                 const savedCollections = JSON.parse(data.Item.collectionsData);
-                appData.collections.forEach(col => { if(savedCollections[col.id]) col.ownedList = savedCollections[col.id]; });
+                appData.collections.forEach(col => { 
+                    if(savedCollections[col.id]) {
+                        // MIGRACIÓN: Comprobamos si el guardado es el antiguo (solo un array) o el nuevo (con precios)
+                        if (Array.isArray(savedCollections[col.id])) {
+                            col.ownedList = savedCollections[col.id];
+                        } else {
+                            col.ownedList = savedCollections[col.id].ownedList;
+                            if (col.type === 'cards' && savedCollections[col.id].prices) {
+                                col.items.forEach((item, idx) => {
+                                    item.price = savedCollections[col.id].prices[idx] || item.price;
+                                });
+                            }
+                        }
+                    } 
+                });
             }
             if (data.Item.finances) {
                 const dbFin = data.Item.finances;
@@ -168,7 +182,13 @@ function showSaveNotification() {
 function saveToDynamo() {
     if (!dbUserId) return; 
     const collectionsToSave = {};
-    appData.collections.forEach(col => { collectionsToSave[col.id] = col.ownedList; });
+    appData.collections.forEach(col => { 
+        // NUEVO: Guardamos tanto la propiedad como los precios
+        collectionsToSave[col.id] = {
+            ownedList: col.ownedList,
+            prices: col.type === 'cards' ? col.items.map(i => i.price) : undefined
+        }; 
+    });
 
     const params = {
         TableName: 'ColeccionesData',
@@ -187,6 +207,93 @@ function saveToDynamo() {
         }
     });
 }
+
+
+// --- 🔮 API SCRYFALL: ACTUALIZACIÓN DE PRECIOS EN TIEMPO REAL ---
+window.syncScryfallPrices = async () => {
+    const btn = document.getElementById('scryfall-sync-btn');
+    if (!btn) return;
+    
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Preparando...';
+    btn.style.opacity = '0.7';
+
+    const magicCol = appData.collections.find(c => c.id === 1);
+    if (!magicCol) return;
+
+    let updatedCount = 0;
+
+    for (let i = 0; i < magicCol.items.length; i++) {
+        const card = magicCol.items[i];
+        
+        // Limpiamos el nombre: Si es una carta doble (ej. Cecil // Paladin), Scryfall la encuentra solo buscando la primera cara.
+        let searchName = card.name.split(' // ')[0].trim();
+        
+        try {
+            // Usamos Fuzzy search para evitar fallos por comas o apóstrofes raros
+            const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(searchName)}`);
+            if (res.ok) {
+                const data = await res.json();
+                // Priorizamos Euros, si no Dolares
+                const newPrice = data.prices?.eur || data.prices?.usd;
+                if (newPrice) {
+                    card.price = parseFloat(newPrice);
+                }
+            }
+        } catch (e) {
+            console.error("Error buscando en Scryfall:", card.name);
+        }
+
+        updatedCount++;
+        btn.innerHTML = `⏳ Leyendo... ${updatedCount}/${magicCol.items.length}`;
+
+        // ESPERA VITAL: Scryfall banea IPs si hacemos más de 10 peticiones por segundo.
+        await new Promise(r => setTimeout(r, 120)); 
+    }
+
+    btn.innerHTML = '✅ ¡Mercado Actualizado!';
+    saveToDynamo();  // Guardamos los nuevos precios
+    updateAllUI();   // Refrescamos toda la web
+
+    setTimeout(() => {
+        btn.innerHTML = '🔄 Precios Magic';
+        btn.disabled = false;
+        btn.style.opacity = '1';
+    }, 3000);
+};
+
+// Insertar Botones en el Menú Superior Dinámicamente
+document.addEventListener('DOMContentLoaded', () => {
+    const badgesContainer = document.querySelector('.badges');
+    
+    // Botón API Scryfall
+    const scryfallBtn = document.createElement('button');
+    scryfallBtn.id = 'scryfall-sync-btn';
+    scryfallBtn.className = 'btn';
+    scryfallBtn.style.padding = '0.15rem 0.5rem';
+    scryfallBtn.style.fontSize = '0.75rem';
+    scryfallBtn.style.borderColor = '#8b5cf6'; // Morado Magic
+    scryfallBtn.style.color = '#8b5cf6';
+    scryfallBtn.style.marginRight = '0.5rem';
+    scryfallBtn.innerHTML = '🔄 Precios Magic';
+    scryfallBtn.onclick = window.syncScryfallPrices;
+
+    // Botón Resumen
+    const summaryBtn = document.createElement('button');
+    summaryBtn.className = 'btn';
+    summaryBtn.style.padding = '0.15rem 0.5rem';
+    summaryBtn.style.fontSize = '0.75rem';
+    summaryBtn.style.borderColor = 'var(--primary)';
+    summaryBtn.style.color = 'var(--primary)';
+    summaryBtn.innerHTML = '📊 Resumen Anual';
+    summaryBtn.onclick = window.showAnnualSummary;
+    
+    // Insertamos los dos justo antes del botón de salir
+    const logoutBtn = badgesContainer.lastElementChild;
+    badgesContainer.insertBefore(scryfallBtn, logoutBtn);
+    badgesContainer.insertBefore(summaryBtn, logoutBtn);
+});
+
 
 // --- LÓGICA DE MESES Y GASTOS ---
 
@@ -243,13 +350,13 @@ window.removeExpense = (type, id) => {
 window.updateSalary = (val) => { appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
 window.updateAllocation = (val) => { appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0; updateAllUI(); saveToDynamo(); };
 
-// NUEVA FUNCIÓN PARA AÑADIR/RESTAR AL AHORRO TOTAL
+// FUNCIÓN PARA AÑADIR/RESTAR AL AHORRO TOTAL
 window.modifySavings = (multiplier) => {
     const input = document.getElementById('savings-modifier');
     const val = parseFloat(input.value);
     if (!isNaN(val) && val > 0) {
         appData.globalSavings += (val * multiplier);
-        input.value = ''; // Limpiamos la casilla tras sumar/restar
+        input.value = ''; 
         updateAllUI();
         saveToDynamo();
     }
@@ -353,10 +460,8 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
         financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
     }
 
-    // Usamos Math.max para asegurar que si te gastas todo no salga la barra "hacia atrás" en negativo
     const progressPercent = Math.max(0, Math.min((totalRealSavings / appData.savingsGoal) * 100, 100));
     
-    // DISEÑO DEL PANEL DE AHORRO CON BOTONES DE + Y -
     goalDiv.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:1rem;">
             <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
@@ -394,7 +499,6 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
 function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
     
-    // Cálculo Histórico para sumar a la barra automáticamente
     let accumulatedSavings = 0;
     Object.values(appData.monthlyData).forEach(monthData => {
         let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -407,7 +511,6 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
         }
     });
 
-    // Tu Ahorro Total ahora es: (Ajustes manuales) + (Lo que ahorra la app sola)
     const totalRealSavings = appData.globalSavings + accumulatedSavings;
 
     const disposable = curData.salary - totalFixed - totalVar;
@@ -435,7 +538,6 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
 
     buildSavingsPanel(currentMonthSavings, totalRealSavings, accumulatedSavings);
 
-    // Dibujar gráfico si la librería ya cargó
     if (typeof Chart !== 'undefined') {
         drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
     } else {
@@ -519,20 +621,6 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     }
     detailsDiv.innerHTML = planHTML;
 }
-
-// --- BOTÓN Y MODAL RESUMEN ANUAL ---
-document.addEventListener('DOMContentLoaded', () => {
-    const badgesContainer = document.querySelector('.badges');
-    const summaryBtn = document.createElement('button');
-    summaryBtn.className = 'btn';
-    summaryBtn.style.padding = '0.15rem 0.5rem';
-    summaryBtn.style.fontSize = '0.75rem';
-    summaryBtn.style.borderColor = 'var(--primary)';
-    summaryBtn.style.color = 'var(--primary)';
-    summaryBtn.innerHTML = '📊 Resumen Anual';
-    summaryBtn.onclick = window.showAnnualSummary;
-    badgesContainer.insertBefore(summaryBtn, badgesContainer.lastElementChild);
-});
 
 window.showAnnualSummary = () => {
     const year = appData.currentMonth.split('-')[0];
