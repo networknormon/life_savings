@@ -42,6 +42,7 @@
                 <h1>Gestor de Colecciones</h1>
             </div>
             <div class="badges">
+                <button onclick="openScanner()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--success); color: var(--success); margin-right: 0.5rem;">📷 Escanear</button>
                 <span class="badge success">Objetivo: 5 Colecciones</span>
                 <span class="badge warning" id="global-missing-count">Calculando...</span>
                 <button onclick="logout()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--danger); color: var(--danger);">Salir</button>
@@ -52,14 +53,12 @@
     <main class="container">
         
         <section class="finance-panel">
-            
             <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); padding: 1rem; border-radius: 1rem; border: 1px solid #334155;">
                 <h2 style="font-size: 1.1rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">📅 Finanzas del Mes</h2>
                 <input type="month" id="month-selector" onchange="changeMonth(this.value)" class="btn" style="background: #0f172a; color: white; border: 1px solid #334155; padding: 0.5rem;">
             </div>
 
             <div class="inputs-grid">
-                
                 <div class="card input-card">
                     <label>Ingresos Mensuales</label>
                     <div class="input-wrapper">
@@ -79,7 +78,6 @@
                     </div>
                     <div id="fixed-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
                         <div id="fixed-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        
                         <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                             <div style="display: flex; gap: 0.5rem;">
                                 <input type="text" id="new-fixed-name" placeholder="Ej. Internet" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
@@ -101,7 +99,6 @@
                     </div>
                     <div id="variable-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
                         <div id="variable-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        
                         <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                             <div style="display: flex; gap: 0.5rem;">
                                 <input type="text" id="new-variable-name" placeholder="Ej. Comida" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
@@ -143,8 +140,7 @@
     </main>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
-    
-    <script>
+    <script src="https://unpkg.com/html5-qrcode"></script> <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js')

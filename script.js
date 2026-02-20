@@ -113,20 +113,15 @@ function loadDataFromDynamo() {
         if (err) {
             console.error("Error descargando datos:", err);
         } else if (data.Item) {
-            console.log("Datos cargados desde la nube ☁️");
             if (data.Item.collectionsData) {
                 const savedCollections = JSON.parse(data.Item.collectionsData);
                 appData.collections.forEach(col => { 
                     if(savedCollections[col.id]) {
-                        // MIGRACIÓN: Comprobamos si el guardado es el antiguo (solo un array) o el nuevo (con precios)
-                        if (Array.isArray(savedCollections[col.id])) {
-                            col.ownedList = savedCollections[col.id];
-                        } else {
+                        if (Array.isArray(savedCollections[col.id])) { col.ownedList = savedCollections[col.id]; } 
+                        else {
                             col.ownedList = savedCollections[col.id].ownedList;
                             if (col.type === 'cards' && savedCollections[col.id].prices) {
-                                col.items.forEach((item, idx) => {
-                                    item.price = savedCollections[col.id].prices[idx] || item.price;
-                                });
+                                col.items.forEach((item, idx) => { item.price = savedCollections[col.id].prices[idx] || item.price; });
                             }
                         }
                     } 
@@ -183,11 +178,7 @@ function saveToDynamo() {
     if (!dbUserId) return; 
     const collectionsToSave = {};
     appData.collections.forEach(col => { 
-        // NUEVO: Guardamos tanto la propiedad como los precios
-        collectionsToSave[col.id] = {
-            ownedList: col.ownedList,
-            prices: col.type === 'cards' ? col.items.map(i => i.price) : undefined
-        }; 
+        collectionsToSave[col.id] = { ownedList: col.ownedList, prices: col.type === 'cards' ? col.items.map(i => i.price) : undefined }; 
     });
 
     const params = {
@@ -200,85 +191,57 @@ function saveToDynamo() {
         }
     };
     docClient.put(params, (err, data) => {
-        if (err) console.error("Error subiendo datos:", err);
-        else {
-            console.log("Datos guardados en la nube ☁️");
-            showSaveNotification();
-        }
+        if (!err) showSaveNotification();
     });
 }
 
-
-// --- 🔮 API SCRYFALL: ACTUALIZACIÓN DE PRECIOS EN TIEMPO REAL ---
+// --- 🔮 API SCRYFALL ---
 window.syncScryfallPrices = async () => {
     const btn = document.getElementById('scryfall-sync-btn');
     if (!btn) return;
-    
-    btn.disabled = true;
-    btn.innerHTML = '⏳ Preparando...';
-    btn.style.opacity = '0.7';
+    btn.disabled = true; btn.innerHTML = '⏳ Preparando...'; btn.style.opacity = '0.7';
 
     const magicCol = appData.collections.find(c => c.id === 1);
     if (!magicCol) return;
 
     let updatedCount = 0;
-
     for (let i = 0; i < magicCol.items.length; i++) {
         const card = magicCol.items[i];
-        
-        // Limpiamos el nombre: Si es una carta doble (ej. Cecil // Paladin), Scryfall la encuentra solo buscando la primera cara.
         let searchName = card.name.split(' // ')[0].trim();
-        
         try {
-            // Usamos Fuzzy search para evitar fallos por comas o apóstrofes raros
             const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(searchName)}`);
             if (res.ok) {
                 const data = await res.json();
-                // Priorizamos Euros, si no Dolares
                 const newPrice = data.prices?.eur || data.prices?.usd;
-                if (newPrice) {
-                    card.price = parseFloat(newPrice);
-                }
+                if (newPrice) card.price = parseFloat(newPrice);
             }
-        } catch (e) {
-            console.error("Error buscando en Scryfall:", card.name);
-        }
-
+        } catch (e) {}
         updatedCount++;
         btn.innerHTML = `⏳ Leyendo... ${updatedCount}/${magicCol.items.length}`;
-
-        // ESPERA VITAL: Scryfall banea IPs si hacemos más de 10 peticiones por segundo.
         await new Promise(r => setTimeout(r, 120)); 
     }
-
     btn.innerHTML = '✅ ¡Mercado Actualizado!';
-    saveToDynamo();  // Guardamos los nuevos precios
-    updateAllUI();   // Refrescamos toda la web
+    saveToDynamo(); updateAllUI(); 
 
     setTimeout(() => {
-        btn.innerHTML = '🔄 Precios Magic';
-        btn.disabled = false;
-        btn.style.opacity = '1';
+        btn.innerHTML = '🔄 Precios Magic'; btn.disabled = false; btn.style.opacity = '1';
     }, 3000);
 };
 
-// Insertar Botones en el Menú Superior Dinámicamente
 document.addEventListener('DOMContentLoaded', () => {
     const badgesContainer = document.querySelector('.badges');
     
-    // Botón API Scryfall
     const scryfallBtn = document.createElement('button');
     scryfallBtn.id = 'scryfall-sync-btn';
     scryfallBtn.className = 'btn';
     scryfallBtn.style.padding = '0.15rem 0.5rem';
     scryfallBtn.style.fontSize = '0.75rem';
-    scryfallBtn.style.borderColor = '#8b5cf6'; // Morado Magic
+    scryfallBtn.style.borderColor = '#8b5cf6';
     scryfallBtn.style.color = '#8b5cf6';
     scryfallBtn.style.marginRight = '0.5rem';
     scryfallBtn.innerHTML = '🔄 Precios Magic';
     scryfallBtn.onclick = window.syncScryfallPrices;
 
-    // Botón Resumen
     const summaryBtn = document.createElement('button');
     summaryBtn.className = 'btn';
     summaryBtn.style.padding = '0.15rem 0.5rem';
@@ -288,7 +251,6 @@ document.addEventListener('DOMContentLoaded', () => {
     summaryBtn.innerHTML = '📊 Resumen Anual';
     summaryBtn.onclick = window.showAnnualSummary;
     
-    // Insertamos los dos justo antes del botón de salir
     const logoutBtn = badgesContainer.lastElementChild;
     badgesContainer.insertBefore(scryfallBtn, logoutBtn);
     badgesContainer.insertBefore(summaryBtn, logoutBtn);
@@ -296,7 +258,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 // --- LÓGICA DE MESES Y GASTOS ---
-
 function createNewMonthProfile(monthStr) {
     const months = Object.keys(appData.monthlyData).sort();
     const lastMonth = months[months.length - 1];
@@ -316,10 +277,7 @@ function createNewMonthProfile(monthStr) {
 window.changeMonth = (newMonth) => {
     if (!newMonth) return;
     appData.currentMonth = newMonth;
-    if (!appData.monthlyData[newMonth]) {
-        createNewMonthProfile(newMonth);
-        saveToDynamo();
-    }
+    if (!appData.monthlyData[newMonth]) { createNewMonthProfile(newMonth); saveToDynamo(); }
     updateAllUI();
 };
 
@@ -350,15 +308,12 @@ window.removeExpense = (type, id) => {
 window.updateSalary = (val) => { appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
 window.updateAllocation = (val) => { appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0; updateAllUI(); saveToDynamo(); };
 
-// FUNCIÓN PARA AÑADIR/RESTAR AL AHORRO TOTAL
 window.modifySavings = (multiplier) => {
     const input = document.getElementById('savings-modifier');
     const val = parseFloat(input.value);
     if (!isNaN(val) && val > 0) {
         appData.globalSavings += (val * multiplier);
-        input.value = ''; 
-        updateAllUI();
-        saveToDynamo();
+        input.value = ''; updateAllUI(); saveToDynamo();
     }
 };
 
@@ -405,7 +360,6 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
         chartContainer.innerHTML = '<canvas id="financeChart"></canvas>';
         stratBox.appendChild(chartContainer);
     }
-
     const ctx = document.getElementById('financeChart');
     if (!ctx) return;
 
@@ -428,9 +382,7 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
             data: dataObj,
             options: {
                 responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: '#f8fafc', font: {size: 11}, padding: 10 } }
-                }
+                plugins: { legend: { position: 'bottom', labels: { color: '#f8fafc', font: {size: 11}, padding: 10 } } }
             }
         });
     }
@@ -479,7 +431,7 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
         <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
                 <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <span style="color:#94a3b8;" title="Añade o resta dinero extra (ej. ventas, regalos o imprevistos)">Ajuste Manual:</span>
+                    <span style="color:#94a3b8;" title="Añade o resta dinero extra">Ajuste Manual:</span>
                     <div style="display:flex; align-items:center; gap: 0.25rem;">
                         <input type="number" id="savings-modifier" placeholder="€" style="background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.25rem 0.5rem; color:white; font-weight:bold; width:70px; outline:none;">
                         <button class="btn" style="padding:0.25rem 0.5rem; background:rgba(16, 185, 129, 0.2); color:#34d399; border:1px solid #10b981; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="modifySavings(1)">+ Añadir</button>
@@ -498,7 +450,6 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
 
 function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
-    
     let accumulatedSavings = 0;
     Object.values(appData.monthlyData).forEach(monthData => {
         let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -512,7 +463,6 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     });
 
     const totalRealSavings = appData.globalSavings + accumulatedSavings;
-
     const disposable = curData.salary - totalFixed - totalVar;
     const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
     const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
@@ -538,11 +488,8 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
 
     buildSavingsPanel(currentMonthSavings, totalRealSavings, accumulatedSavings);
 
-    if (typeof Chart !== 'undefined') {
-        drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
-    } else {
-        window.ChartLoadedCallback = () => drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
-    }
+    if (typeof Chart !== 'undefined') { drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget); } 
+    else { window.ChartLoadedCallback = () => drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget); }
 
     let recommendations = [];
     let tempBudget = spendingMoney;
@@ -813,7 +760,7 @@ window.toggleItem = (colId, idx) => {
     saveToDynamo();
 }
 
-// --- SISTEMA DE ZOOM GLOBAL DE CARTAS ---
+// --- SISTEMA DE ZOOM DE CARTAS ---
 const previewImg = document.createElement('img');
 previewImg.id = 'global-card-preview';
 document.body.appendChild(previewImg);
@@ -839,6 +786,109 @@ window.moveCardPreview = (e) => {
         previewImg.style.left = `${x}px`;
         previewImg.style.top = `${y}px`;
     }
+};
+
+// --- ESCÁNER DE CÓDIGOS DE BARRAS (NUEVO) ---
+let html5QrcodeScanner = null;
+
+window.openScanner = () => {
+    let modal = document.getElementById('scanner-modal');
+    if(!modal) {
+        modal = document.createElement('div');
+        modal.id = 'scanner-modal';
+        modal.className = 'modal';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:400px; text-align:center;">
+                <h2 style="color:var(--primary); margin-bottom:1rem;">📷 Escáner de Códigos</h2>
+                <div id="reader" style="width:100%; min-height:300px; background:#0f172a; border-radius:8px; overflow:hidden;"></div>
+                <div id="scanner-result" style="margin-top:1rem; font-size:0.9rem; color:white;">Apunta al código de barras del libro...</div>
+                <button class="btn btn-primary" style="margin-top:1.5rem; width:100%; padding:0.75rem; font-weight:bold; background:var(--danger); border-color:var(--danger);" onclick="closeScanner()">Cerrar Escáner</button>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+
+    if (!html5QrcodeScanner) {
+        html5QrcodeScanner = new Html5Qrcode("reader");
+    }
+
+    // Usamos la cámara trasera por defecto
+    html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } }, onScanSuccess)
+    .catch(err => {
+        document.getElementById('scanner-result').innerHTML = `<span style="color:#f43f5e">⚠️ Error al acceder a la cámara. Revisa los permisos de tu navegador.</span>`;
+    });
+};
+
+window.closeScanner = () => {
+    const modal = document.getElementById('scanner-modal');
+    if (modal) modal.style.display = 'none';
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
+        html5QrcodeScanner.stop().catch(e => console.error(e));
+    }
+    document.getElementById('scanner-result').innerHTML = '';
+};
+
+async function onScanSuccess(decodedText) {
+    if(html5QrcodeScanner.isScanning) html5QrcodeScanner.stop(); 
+    
+    const resDiv = document.getElementById('scanner-result');
+    resDiv.innerHTML = `⏳ Buscando libro con ISBN: ${decodedText}...`;
+
+    try {
+        // Buscamos el código en la base de datos gratuita de Google Books
+        const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${decodedText}`);
+        const data = await response.json();
+
+        if (data.items && data.items.length > 0) {
+            const title = data.items[0].volumeInfo.title;
+            resDiv.innerHTML = `📘 Detectado: <strong>${title}</strong><br>Analizando tus colecciones...`;
+
+            let matchedCol = null;
+            appData.collections.forEach(col => {
+                if (col.type === 'manga' && title.toLowerCase().includes(col.name.split(' ')[0].toLowerCase())) {
+                    matchedCol = col;
+                }
+            });
+
+            if (matchedCol) {
+                // Buscamos cualquier número suelto en el título que indique el volumen
+                const numbers = title.match(/(\d+)/g);
+                let matchedVol = null;
+                if (numbers && numbers.length > 0) {
+                    matchedVol = parseInt(numbers[numbers.length - 1]) - 1; // -1 porque los arrays empiezan en 0
+                }
+
+                if (matchedVol !== null && matchedVol >= 0 && matchedVol < matchedCol.totalItems) {
+                    const isOwned = matchedCol.ownedList[matchedVol];
+                    if (isOwned) {
+                        resDiv.innerHTML = `<span style="color:var(--success)">✅ Ya tienes <strong>${matchedCol.name} - Tomo ${matchedVol + 1}</strong> en tu colección.</span>`;
+                    } else {
+                        resDiv.innerHTML = `
+                            <div style="margin: 1rem 0; padding: 1rem; background: rgba(16, 185, 129, 0.1); border: 1px solid var(--success); border-radius: 8px;">
+                                <div style="font-weight:bold; color:var(--success); margin-bottom: 0.5rem;">🔥 ¡Te falta en la colección!</div>
+                                <div style="color:white; font-size:1.1rem; margin-bottom:1rem;">${matchedCol.name} - Tomo ${matchedVol + 1}</div>
+                                <button class="btn btn-primary" style="width:100%; padding:0.75rem; font-weight:bold;" onclick="addScannedItem(${matchedCol.id}, ${matchedVol})">Añadir a mi colección</button>
+                            </div>
+                        `;
+                    }
+                } else {
+                    resDiv.innerHTML = `Reconocido como ${matchedCol.name}, pero Google no devuelve un número de tomo exacto para vincularlo automáticamente.`;
+                }
+            } else {
+                resDiv.innerHTML = `<span style="color:#f43f5e;">El libro es "${title}", pero no parece pertenecer a ninguna de tus colecciones actuales.</span>`;
+            }
+        } else {
+            resDiv.innerHTML = `❌ El código ${decodedText} no existe en la base de datos global.`;
+        }
+    } catch (e) {
+        resDiv.innerHTML = `❌ Error de conexión al buscar el libro.`;
+    }
+}
+
+window.addScannedItem = (colId, idx) => {
+    toggleItem(colId, idx);
+    closeScanner();
 };
 
 // INIT ARRANQUE BÁSICO
