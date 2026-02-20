@@ -2,7 +2,6 @@ function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
 
-// Datos de cartas de Magic ACTUALIZADOS Y ORDENADOS
 const initialMagicCards = [
     { name: "A Realm Reborn", price: 0.28, image: "A Realm Reborn.jpg" },
     { name: "Absolute Virtue", price: 3.49, image: "Absolute Virtue .jpg" },
@@ -55,8 +54,8 @@ let appData = {
     salary: 1084.20,
     expenses: 329.92,
     allocation: 30,
-    currentSavings: 2100, // <--- LO QUE LLEVAS AHORRADO
-    savingsGoal: 10000,   // <--- META FINAL
+    currentSavings: 2100, 
+    savingsGoal: 10000,   
     collections: [
         {
             id: 1,
@@ -145,14 +144,46 @@ const monthsDisplay = document.getElementById('months-to-finish');
 const container = document.getElementById('collections-container');
 const globalMissingDisplay = document.getElementById('global-missing-count');
 
+// --- SISTEMA DE ZOOM GLOBAL DE CARTAS ---
+const previewImg = document.createElement('img');
+previewImg.id = 'global-card-preview';
+document.body.appendChild(previewImg);
+
+window.showCardPreview = (e, imageSrc) => {
+    previewImg.src = `MagicFFSet/${imageSrc}`;
+    previewImg.style.display = 'block';
+    window.moveCardPreview(e);
+};
+
+window.hideCardPreview = () => {
+    previewImg.style.display = 'none';
+    previewImg.src = '';
+};
+
+window.moveCardPreview = (e) => {
+    if (previewImg.style.display === 'block') {
+        let x = e.clientX + 20; // 20px a la derecha del ratón
+        let y = e.clientY - 125; // Centrado verticalmente respecto al ratón
+        
+        // Evitar que se salga por la derecha
+        if (x + 250 > window.innerWidth) x = e.clientX - 270;
+        // Evitar que se salga por abajo o arriba
+        if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
+        if (y < 10) y = 10;
+
+        previewImg.style.left = `${x}px`;
+        previewImg.style.top = `${y}px`;
+    }
+};
+
 const financePanel = document.querySelector('.finance-panel');
 if (!document.getElementById('savings-goal-panel')) {
     const goalDiv = document.createElement('div');
     goalDiv.id = 'savings-goal-panel';
     goalDiv.className = 'card';
-    goalDiv.style.gridColumn = "1 / -1"; // Ocupar todo el ancho
+    goalDiv.style.gridColumn = "1 / -1"; 
     goalDiv.style.background = "linear-gradient(to right, #1e293b, #0f172a)";
-    goalDiv.style.border = "1px solid #eab308"; // Borde dorado
+    goalDiv.style.border = "1px solid #eab308"; 
     
     goalDiv.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
@@ -173,23 +204,18 @@ if (!document.getElementById('savings-goal-panel')) {
             <div style="color:#34d399">Este mes sumas: <strong id="monthly-add">+€0.00</strong></div>
         </div>
     `;
-    // Insertamos justo después de los inputs y antes de la estrategia
     financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
 }
 
-// --- FORMATTERS ---
 const formatMoney = (amount) => {
     return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 };
 
-// --- CORE LOGIC ---
-
 function calculateFinances() {
     const disposable = appData.salary - appData.expenses;
     const hobbyBudget = disposable * (appData.allocation / 100);
-    const generalSavings = disposable - hobbyBudget; // El 70% que NO tocas
+    const generalSavings = disposable - hobbyBudget; 
     
-    // 1. Totales y Magic
     let totalCostNeeded = 0;
     let totalItemsNeeded = 0;
     let magicRemaining = 0;
@@ -215,43 +241,29 @@ function calculateFinances() {
         }
     });
 
-    // 2. Presupuestos y Estrategia
-    // Si Magic está completo, el dinero de la hucha mágica (savings) se libera para mangas
-    // PERO el "General Savings" (el 70%) sigue intacto para la Meta 10K.
     let magicPiggyBank = isMagicComplete ? 0 : hobbyBudget * 0.60;
     let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-    // ACTUALIZAR BARRA 10K
-    // Ahorro total del mes = (Ahorro General 70%) + (Hucha Magic si no se gasta inmediatamente, pero asumiremos que Magic se gasta).
-    // Para simplificar: La barra crece con el "Ahorro General" (lo que no metes en vicios).
     const monthlyAdd = generalSavings;
     const projectedTotal = appData.currentSavings + monthlyAdd;
     const progressPercent = (appData.currentSavings / appData.savingsGoal) * 100;
-    const projectedPercent = (projectedTotal / appData.savingsGoal) * 100;
 
     document.getElementById('savings-bar').style.width = `${progressPercent}%`;
     document.getElementById('savings-percent').innerText = `${progressPercent.toFixed(1)}%`;
     document.getElementById('current-savings-text').innerText = formatMoney(appData.currentSavings);
     document.getElementById('monthly-add').innerText = `+${formatMoney(monthlyAdd)}`;
 
-
-    // 3. GENERADOR DE ESTRATEGIA (Algoritmo de Prioridad)
     let recommendations = [];
     let tempBudget = spendingMoney;
     
     let candidateCollections = appData.collections
-        .filter(c => c.id !== 1) // Magic va por separado
+        .filter(c => c.id !== 1) 
         .map(c => {
-            return {
-                ...c,
-                nextIndex: c.ownedList.indexOf(false),
-                simulatedCount: 0
-            };
+            return { ...c, nextIndex: c.ownedList.indexOf(false), simulatedCount: 0 };
         })
         .filter(c => c.nextIndex !== -1);
 
-    // Ordenar: 1. Prioridad (menor es mejor), 2. Precio (menor es mejor para rellenar huecos)
     candidateCollections.sort((a, b) => a.priority - b.priority || a.pricePerItem - b.pricePerItem);
 
     let safetyLoop = 0;
@@ -260,31 +272,26 @@ function calculateFinances() {
         safetyLoop++;
 
         for (let col of candidateCollections) {
-            // Check si hay dinero y si quedan items
             if (col.pricePerItem <= tempBudget && (col.nextIndex + col.simulatedCount < col.totalItems)) {
                 tempBudget -= col.pricePerItem;
                 col.simulatedCount++;
                 
                 let existingRec = recommendations.find(r => r.name === col.name);
                 if (existingRec) {
-                    existingRec.items.push(col.nextIndex + existingRec.count); // Ajuste índice
+                    existingRec.items.push(col.nextIndex + existingRec.count); 
                     existingRec.count++;
                 } else {
                     recommendations.push({
-                        name: col.name,
-                        icon: col.icon,
-                        count: 1,
-                        items: [col.nextIndex + 1]
+                        name: col.name, icon: col.icon, count: 1, items: [col.nextIndex + 1]
                     });
                 }
                 boughtSomething = true;
-                break; // Reiniciar bucle para respetar prioridad absoluta
+                break; 
             }
         }
         if (!boughtSomething) break;
     }
 
-    // 4. Renderizado Textos
     allocationDisplay.innerText = `${appData.allocation}%`;
     hobbyBudgetDisplay.innerText = formatMoney(hobbyBudget);
     savingsDisplay.innerText = formatMoney(magicPiggyBank);
@@ -293,7 +300,6 @@ function calculateFinances() {
     monthsDisplay.innerText = months < 900 ? months : "∞";
     globalMissingDisplay.innerText = `Faltan ${totalItemsNeeded} items`;
 
-    // 5. Inyectar Plan HTML
     const stratText = document.querySelector('.strategy-text');
     let detailsDiv = document.getElementById('plan-details');
     
@@ -342,8 +348,6 @@ function calculateFinances() {
 
     detailsDiv.innerHTML = planHTML;
 }
-
-// --- RENDER FUNCTIONS ---
 
 function renderCollections() {
     container.innerHTML = '';
@@ -410,20 +414,21 @@ function renderCollections() {
                     const isOwned = col.ownedList[idx];
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
-                    // NUEVO DISEÑO CON MINIATURA Y ZOOM ON HOVER
+                    // AQUI ESTA LA MAGIA DEL HOVER CON EVENTOS JS
                     itemEl.innerHTML = `
-                        <div style="display:flex; align-items:center; gap:1rem; width:100%">
-                            <div class="magic-thumbnail">
-                                <img src="MagicFFSet/${item.image}" alt="${item.name}" style="width:100%; height:100%; object-fit:cover; border-radius: 3px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-                                <div style="display:none; width:100%; height:100%; background:#334155; align-items:center; justify-content:center; font-size:0.8rem; color:#94a3b8; border-radius:3px;">?</div>
-                                
-                                <img src="MagicFFSet/${item.image}" class="magic-hover-preview" onerror="this.style.display='none'">
+                        <div style="display:flex; align-items:center; gap:1rem; width:100%; cursor:zoom-in;"
+                             onmouseenter="showCardPreview(event, '${item.image}')" 
+                             onmouseleave="hideCardPreview()"
+                             onmousemove="moveCardPreview(event)">
+                            <div style="position:relative; width:45px; height:63px; border-radius:4px; overflow:hidden; border:1px solid #334155; flex-shrink:0; pointer-events:none;">
+                                <img src="MagicFFSet/${item.image}" alt="${item.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                                <div style="display:none; width:100%; height:100%; background:#334155; align-items:center; justify-content:center; font-size:0.8rem; color:#94a3b8;">?</div>
                             </div>
-                            <div style="flex:1; overflow:hidden">
+                            <div style="flex:1; overflow:hidden; pointer-events:none;">
                                 <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${item.name}">${item.name}</div>
                                 <div style="font-size:0.75rem; color:#94a3b8">${formatMoney(item.price)}</div>
                             </div>
-                            <div class="check-box">${isOwned ? '✔' : ''}</div>
+                            <div class="check-box" style="pointer-events:none;">${isOwned ? '✔' : ''}</div>
                         </div>
                     `;
                     itemEl.onclick = () => toggleItem(col.id, idx);
@@ -472,8 +477,6 @@ function renderCollections() {
         container.appendChild(card);
     });
 }
-
-// --- ACTIONS ---
 
 window.toggleExpand = (id) => {
     const col = appData.collections.find(c => c.id === id);
@@ -541,13 +544,10 @@ window.toggleItem = (colId, idx) => {
     }
 }
 
-// --- EVENT LISTENERS ---
 salaryInput.addEventListener('input', (e) => { appData.salary = parseFloat(e.target.value); calculateFinances(); });
 expensesInput.addEventListener('input', (e) => { appData.expenses = parseFloat(e.target.value); calculateFinances(); });
 allocationInput.addEventListener('input', (e) => { appData.allocation = parseInt(e.target.value); calculateFinances(); });
 
-// --- INIT ---
-// Sincronizar inputs con los datos iniciales de appData
 salaryInput.value = appData.salary;
 expensesInput.value = appData.expenses;
 allocationInput.value = appData.allocation;
