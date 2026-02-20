@@ -9,21 +9,20 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0f172a">
     <link rel="apple-touch-icon" href="icon-192.png">
-    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     
     <script>
-        window.isShowcase = false; // Forzamos desactivar modo vitrina
-
         const hash = window.location.hash;
         let idToken = localStorage.getItem('cognito_id_token');
+
         if (hash.includes("id_token=")) {
-            const urlParamsHash = new URLSearchParams(hash.replace('#', '?'));
-            idToken = urlParamsHash.get('id_token');
+            const urlParams = new URLSearchParams(hash.replace('#', '?'));
+            idToken = urlParams.get('id_token');
             localStorage.setItem('cognito_id_token', idToken);
             window.history.replaceState({}, document.title, window.location.pathname);
         }
+
         if (!idToken) {
             window.location.href = 'https://networknormon.github.io/life_savings/login.html';
         }
@@ -40,9 +39,10 @@
         <div class="container header-content">
             <div class="logo">
                 <span class="icon">📚</span>
-                <h1 id="main-title">Gestor</h1>
+                <h1>Gestor de Colecciones</h1>
             </div>
             <div class="badges">
+                <span class="badge success">Objetivo: 5 Colecciones</span>
                 <span class="badge warning" id="global-missing-count">Calculando...</span>
                 <button onclick="logout()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--danger); color: var(--danger);">Salir</button>
             </div>
@@ -51,13 +51,15 @@
 
     <main class="container">
         
-        <section class="finance-panel" id="finance-section">
+        <section class="finance-panel">
+            
             <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); padding: 1rem; border-radius: 1rem; border: 1px solid #334155;">
-                <h2 style="font-size: 1.1rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">📅 Finanzas</h2>
+                <h2 style="font-size: 1.1rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">📅 Finanzas del Mes</h2>
                 <input type="month" id="month-selector" onchange="changeMonth(this.value)" class="btn" style="background: #0f172a; color: white; border: 1px solid #334155; padding: 0.5rem;">
             </div>
 
             <div class="inputs-grid">
+                
                 <div class="card input-card">
                     <label>Ingresos Mensuales</label>
                     <div class="input-wrapper">
@@ -75,16 +77,15 @@
                         <span>€</span>
                         <span id="total-fixed-display" style="font-size: 1.5rem; font-weight: 700; color: white;">0.00</span>
                     </div>
-                    <div id="fixed-panel" class="smooth-panel">
-                        <div class="smooth-panel-inner">
-                            <div id="fixed-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <input type="text" id="new-fixed-name" placeholder="Ej. Internet" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem;">
-                                    <input type="number" id="new-fixed-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem;">
-                                </div>
-                                <button class="btn btn-primary" onclick="addExpense('fixed')" style="width: 100%; padding: 0.5rem; font-weight: bold;">+ Añadir Fijo</button>
+                    <div id="fixed-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
+                        <div id="fixed-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="new-fixed-name" placeholder="Ej. Internet" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                                <input type="number" id="new-fixed-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
                             </div>
+                            <button class="btn btn-primary" onclick="addExpense('fixed')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Fijo</button>
                         </div>
                     </div>
                 </div>
@@ -98,24 +99,15 @@
                         <span>€</span>
                         <span id="total-variable-display" style="font-size: 1.5rem; font-weight: 700; color: white;">0.00</span>
                     </div>
-                    <div id="variable-panel" class="smooth-panel">
-                        <div class="smooth-panel-inner">
-                            <div id="variable-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <select id="new-variable-tag" style="background: #0f172a; color: white; border: 1px solid #334155; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem;">
-                                        <option value="🍔">🍔 Comida</option>
-                                        <option value="🚗">🚗 Transp.</option>
-                                        <option value="🍻">🍻 Ocio</option>
-                                        <option value="🛒">🛒 Compras</option>
-                                        <option value="💡">💡 Hogar</option>
-                                        <option value="❓">❓ Otros</option>
-                                    </select>
-                                    <input type="number" id="new-variable-amount" placeholder="€" style="width: 70px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem;">
-                                </div>
-                                <input type="text" id="new-variable-name" placeholder="Descripción" style="width: 100%; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem;">
-                                <button class="btn btn-primary" onclick="addExpense('variable')" style="width: 100%; padding: 0.5rem; font-weight: bold;">+ Añadir Variable</button>
+                    <div id="variable-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
+                        <div id="variable-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="new-variable-name" placeholder="Ej. Comida" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                                <input type="number" id="new-variable-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
                             </div>
+                            <button class="btn btn-primary" onclick="addExpense('variable')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Variable</button>
                         </div>
                     </div>
                 </div>
@@ -147,14 +139,21 @@
         </section>
 
         <div id="collections-container" class="collections-grid"></div>
-        
-        <div style="text-align: center; margin-top: 2rem; margin-bottom: 2rem;">
-            <button onclick="openCollectionModal()" class="btn btn-primary" style="padding: 1rem 2rem; border-radius: 999px;">➕ Nueva Colección</button>
-        </div>
 
     </main>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('Service Worker registrado', reg))
+                    .catch(err => console.log('Fallo al registrar Service Worker', err));
+            });
+        }
+    </script>
+    
     <script src="script.js"></script>
 </body>
 </html>
