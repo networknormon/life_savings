@@ -139,7 +139,6 @@ function loadDataFromDynamo() {
     });
 }
 
-// NUEVO: Función para mostrar el aviso de guardado visual
 function showSaveNotification() {
     let toast = document.getElementById('save-toast');
     if(!toast) {
@@ -161,9 +160,8 @@ function showSaveNotification() {
         toast.style.transition = 'opacity 0.3s';
         document.body.appendChild(toast);
     }
-    // Forzamos el redibujado para que reinicie la animación si se hace clic rápido
     toast.style.opacity = '1';
-    clearTimeout(window.toastTimeout);
+    if(window.toastTimeout) clearTimeout(window.toastTimeout);
     window.toastTimeout = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
@@ -182,11 +180,10 @@ function saveToDynamo() {
         }
     };
     docClient.put(params, (err, data) => {
-        if (err) {
-            console.error("Error subiendo datos:", err);
-        } else {
+        if (err) console.error("Error subiendo datos:", err);
+        else {
             console.log("Datos guardados en la nube ☁️");
-            showSaveNotification(); // Muestra el aviso visual al guardar con éxito
+            showSaveNotification();
         }
     });
 }
@@ -245,7 +242,18 @@ window.removeExpense = (type, id) => {
 
 window.updateSalary = (val) => { appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
 window.updateAllocation = (val) => { appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0; updateAllUI(); saveToDynamo(); };
-window.updateGlobalSavings = (val) => { appData.globalSavings = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
+
+// NUEVA FUNCIÓN PARA AÑADIR/RESTAR AL AHORRO TOTAL
+window.modifySavings = (multiplier) => {
+    const input = document.getElementById('savings-modifier');
+    const val = parseFloat(input.value);
+    if (!isNaN(val) && val > 0) {
+        appData.globalSavings += (val * multiplier);
+        input.value = ''; // Limpiamos la casilla tras sumar/restar
+        updateAllUI();
+        saveToDynamo();
+    }
+};
 
 function renderExpenseLists() {
     const curData = appData.monthlyData[appData.currentMonth];
@@ -345,9 +353,10 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
         financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
     }
 
-    const progressPercent = Math.min((totalRealSavings / appData.savingsGoal) * 100, 100);
+    // Usamos Math.max para asegurar que si te gastas todo no salga la barra "hacia atrás" en negativo
+    const progressPercent = Math.max(0, Math.min((totalRealSavings / appData.savingsGoal) * 100, 100));
     
-    // NUEVO DISEÑO DEL PANEL DE AHORRO CON SUMA AUTOMÁTICA
+    // DISEÑO DEL PANEL DE AHORRO CON BOTONES DE + Y -
     goalDiv.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:1rem;">
             <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
@@ -365,15 +374,19 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
         <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
                 <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <span style="color:#94a3b8;" title="Dinero ahorrado fuera de la aplicación">Ahorro Base (Manual):</span>
-                    <div style="display:flex; align-items:center; background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.1rem 0.5rem;">
-                        <span style="color:white; margin-right:2px;">€</span>
-                        <input type="number" value="${appData.globalSavings}" style="background:transparent; border:none; color:white; font-weight:bold; width:80px; outline:none;" onchange="updateGlobalSavings(this.value)">
+                    <span style="color:#94a3b8;" title="Añade o resta dinero extra (ej. ventas, regalos o imprevistos)">Ajuste Manual:</span>
+                    <div style="display:flex; align-items:center; gap: 0.25rem;">
+                        <input type="number" id="savings-modifier" placeholder="€" style="background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.25rem 0.5rem; color:white; font-weight:bold; width:70px; outline:none;">
+                        <button class="btn" style="padding:0.25rem 0.5rem; background:rgba(16, 185, 129, 0.2); color:#34d399; border:1px solid #10b981; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="modifySavings(1)">+ Añadir</button>
+                        <button class="btn" style="padding:0.25rem 0.5rem; background:rgba(244, 63, 94, 0.2); color:#fb7185; border:1px solid #f43f5e; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="modifySavings(-1)">- Restar</button>
                     </div>
                 </div>
-                <div style="color:#94a3b8;">Ahorro App (Meses): <strong style="color:white;">+${formatMoney(accumulatedSavings)}</strong></div>
+                <div style="color:#94a3b8; text-align:right;">
+                    Ajustes Extra: <strong style="color:${appData.globalSavings >= 0 ? '#34d399' : '#fb7185'};">${appData.globalSavings > 0 ? '+' : ''}${formatMoney(appData.globalSavings)}</strong><br/>
+                    Ahorro App (Histórico): <strong style="color:white;">+${formatMoney(accumulatedSavings)}</strong>
+                </div>
             </div>
-            <div style="color:#34d399; text-align:right;">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
+            <div style="color:#34d399; text-align:right; border-top:1px solid #334155; padding-top:0.5rem;">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
         </div>
     `;
 }
@@ -381,7 +394,7 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
 function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
     
-    // NUEVO: Cálculos históricos para sumar a la barra automáticamente
+    // Cálculo Histórico para sumar a la barra automáticamente
     let accumulatedSavings = 0;
     Object.values(appData.monthlyData).forEach(monthData => {
         let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -394,7 +407,7 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
         }
     });
 
-    // Tu Ahorro Total ahora es (Lo que metiste a mano) + (Lo que ahorra la app sola)
+    // Tu Ahorro Total ahora es: (Ajustes manuales) + (Lo que ahorra la app sola)
     const totalRealSavings = appData.globalSavings + accumulatedSavings;
 
     const disposable = curData.salary - totalFixed - totalVar;
@@ -447,7 +460,6 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
                 tempBudget -= col.pricePerItem; col.simulatedCount++;
                 let existingRec = recommendations.find(r => r.name === col.name);
                 if (existingRec) { 
-                    // ARREGLADO: El bug visual de los tomos repetidos (+1 extra para ajustar el índice visualmente)
                     existingRec.items.push(col.nextIndex + existingRec.count + 1); 
                     existingRec.count++; 
                 } 
@@ -519,7 +531,6 @@ document.addEventListener('DOMContentLoaded', () => {
     summaryBtn.style.color = 'var(--primary)';
     summaryBtn.innerHTML = '📊 Resumen Anual';
     summaryBtn.onclick = window.showAnnualSummary;
-    // Insertarlo justo antes del botón de salir
     badgesContainer.insertBefore(summaryBtn, badgesContainer.lastElementChild);
 });
 
