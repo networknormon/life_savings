@@ -1,6 +1,3 @@
-// --- DATOS INICIALES ---
-
-// Helper para crear array
 function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
@@ -413,12 +410,14 @@ function renderCollections() {
                     const isOwned = col.ownedList[idx];
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
-                    // NUEVO DISEÑO CON MINIATURA
+                    // NUEVO DISEÑO CON MINIATURA Y ZOOM ON HOVER
                     itemEl.innerHTML = `
                         <div style="display:flex; align-items:center; gap:1rem; width:100%">
-                            <div style="position:relative; width:45px; height:63px; border-radius:4px; overflow:hidden; border:1px solid #334155; flex-shrink:0;">
-                                <img src="MagicFFSet/${item.image}" alt="${item.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-                                <div style="display:none; width:100%; height:100%; background:#334155; align-items:center; justify-content:center; font-size:0.8rem; color:#94a3b8;">?</div>
+                            <div class="magic-thumbnail">
+                                <img src="MagicFFSet/${item.image}" alt="${item.name}" style="width:100%; height:100%; object-fit:cover; border-radius: 3px;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                                <div style="display:none; width:100%; height:100%; background:#334155; align-items:center; justify-content:center; font-size:0.8rem; color:#94a3b8; border-radius:3px;">?</div>
+                                
+                                <img src="MagicFFSet/${item.image}" class="magic-hover-preview" onerror="this.style.display='none'">
                             </div>
                             <div style="flex:1; overflow:hidden">
                                 <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${item.name}">${item.name}</div>
