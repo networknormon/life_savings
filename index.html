@@ -6,6 +6,12 @@
     <title>Gestor de Colecciones & Finanzas</title>
     <link rel="stylesheet" href="style.css">
     
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#0f172a">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    
     <script>
         const hash = window.location.hash;
         let idToken = localStorage.getItem('cognito_id_token');
@@ -137,6 +143,17 @@
     </main>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
+    
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('Service Worker registrado', reg))
+                    .catch(err => console.log('Fallo al registrar Service Worker', err));
+            });
+        }
+    </script>
+    
     <script src="script.js"></script>
 </body>
 </html>
