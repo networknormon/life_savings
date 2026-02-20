@@ -59,80 +59,101 @@ let appData = {
     currentSavings: 2100, 
     savingsGoal: 10000,   
     collections: [
-        {
-            id: 1,
-            name: "Magic: FF Master Set",
-            publisher: "Wizards",
-            type: "cards",
-            items: initialMagicCards,
-            ownedList: Array(45).fill(false),
-            expanded: false,
-            theme: "purple",
-            icon: "🔮",
-            priority: 3 
-        },
-        {
-            id: 2,
-            name: "Vagabond",
-            publisher: "Ivrea",
-            type: "manga",
-            totalItems: 37,
-            ownedList: generateOwned(37, 2),
-            pricePerItem: 7.60,
-            expanded: false,
-            theme: "col-theme-stone",
-            icon: "🗡️",
-            folder: "Vagabond",
-            ext: "jpg",
-            priority: 1 
-        },
-        {
-            id: 3,
-            name: "Slam Dunk (Kanzenban)",
-            publisher: "Ivrea",
-            type: "manga",
-            totalItems: 20,
-            ownedList: generateOwned(20, 1),
-            pricePerItem: 14.25,
-            expanded: false,
-            theme: "col-theme-orange",
-            icon: "🏀",
-            folder: "SlamDunk",
-            ext: "webp",
-            priority: 2 
-        },
-        {
-            id: 4,
-            name: "Vinland Saga",
-            publisher: "Planeta",
-            type: "manga",
-            totalItems: 29,
-            ownedList: generateOwned(29, 3),
-            pricePerItem: 12.30,
-            expanded: false,
-            theme: "col-theme-blue",
-            icon: "🛡️",
-            folder: "VinlandSaga",
-            ext: "webp",
-            priority: 1 
-        },
-        {
-            id: 5,
-            name: "Dragon Ball Ultimate",
-            publisher: "Planeta",
-            type: "manga",
-            totalItems: 34,
-            ownedList: generateOwned(34, 7),
-            pricePerItem: 8.60,
-            expanded: false,
-            theme: "col-theme-yellow",
-            icon: "🐉",
-            folder: "DragonBall",
-            ext: "webp",
-            priority: 2 
-        }
+        { id: 1, name: "Magic: FF Master Set", publisher: "Wizards", type: "cards", items: initialMagicCards, ownedList: Array(45).fill(false), expanded: false, theme: "purple", icon: "🔮", priority: 3 },
+        { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 },
+        { id: 3, name: "Slam Dunk (Kanzenban)", publisher: "Ivrea", type: "manga", totalItems: 20, ownedList: generateOwned(20, 1), pricePerItem: 14.25, expanded: false, theme: "col-theme-orange", icon: "🏀", folder: "SlamDunk", ext: "webp", priority: 2 },
+        { id: 4, name: "Vinland Saga", publisher: "Planeta", type: "manga", totalItems: 29, ownedList: generateOwned(29, 3), pricePerItem: 12.30, expanded: false, theme: "col-theme-blue", icon: "🛡️", folder: "VinlandSaga", ext: "webp", priority: 1 },
+        { id: 5, name: "Dragon Ball Ultimate", publisher: "Planeta", type: "manga", totalItems: 34, ownedList: generateOwned(34, 7), pricePerItem: 8.60, expanded: false, theme: "col-theme-yellow", icon: "🐉", folder: "DragonBall", ext: "webp", priority: 2 }
     ]
 };
+
+// --- CONFIGURACIÓN DE AWS DYNAMODB ---
+const REGION = 'eu-north-1';
+const USER_POOL_ID = 'eu-north-1_HT76kHw12';
+const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
+
+AWS.config.region = REGION;
+AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+    IdentityPoolId: IDENTITY_POOL_ID,
+    Logins: {
+        [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: localStorage.getItem('cognito_id_token')
+    }
+});
+
+const docClient = new AWS.DynamoDB.DocumentClient();
+let dbUserId = null;
+
+// Autenticamos y cargamos datos al entrar
+AWS.config.credentials.get((err) => {
+    if (err) {
+        console.error("Error validando token con AWS:", err);
+        return;
+    }
+    dbUserId = AWS.config.credentials.identityId;
+    console.log("Conectado a AWS con ID:", dbUserId);
+    loadDataFromDynamo();
+});
+
+function loadDataFromDynamo() {
+    const params = {
+        TableName: 'ColeccionesData',
+        Key: { userId: dbUserId }
+    };
+    docClient.get(params, (err, data) => {
+        if (err) {
+            console.error("Error descargando datos:", err);
+        } else if (data.Item && data.Item.collectionsData) {
+            console.log("Datos cargados desde la nube ☁️");
+            const savedCollections = JSON.parse(data.Item.collectionsData);
+            
+            // Volcamos lo guardado en nuestra app
+            appData.collections.forEach(col => {
+                if(savedCollections[col.id]) col.ownedList = savedCollections[col.id];
+            });
+            
+            if (data.Item.finances) {
+                 appData.salary = data.Item.finances.salary || appData.salary;
+                 appData.expenses = data.Item.finances.expenses || appData.expenses;
+                 appData.allocation = data.Item.finances.allocation || appData.allocation;
+                 salaryInput.value = appData.salary;
+                 expensesInput.value = appData.expenses;
+                 allocationInput.value = appData.allocation;
+            }
+            // Recalculamos con los nuevos datos
+            calculateFinances();
+            renderCollections();
+        }
+    });
+}
+
+function saveToDynamo() {
+    if (!dbUserId) return; // Si no hay conexión, no guardamos
+    
+    const collectionsToSave = {};
+    appData.collections.forEach(col => {
+        collectionsToSave[col.id] = col.ownedList;
+    });
+
+    const params = {
+        TableName: 'ColeccionesData',
+        Item: {
+            userId: dbUserId,
+            collectionsData: JSON.stringify(collectionsToSave),
+            finances: {
+                salary: appData.salary,
+                expenses: appData.expenses,
+                allocation: appData.allocation
+            },
+            lastUpdated: new Date().toISOString()
+        }
+    };
+
+    docClient.put(params, (err, data) => {
+        if (err) console.error("Error subiendo datos:", err);
+        else console.log("Datos guardados en la nube ☁️");
+    });
+}
+
 
 const salaryInput = document.getElementById('salary');
 const expensesInput = document.getElementById('expenses');
@@ -166,11 +187,9 @@ window.moveCardPreview = (e) => {
     if (previewImg.style.display === 'block') {
         let x = e.clientX + 20; 
         let y = e.clientY - 125; 
-        
         if (x + 250 > window.innerWidth) x = e.clientX - 270;
         if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
         if (y < 10) y = 10;
-
         previewImg.style.left = `${x}px`;
         previewImg.style.top = `${y}px`;
     }
@@ -331,7 +350,6 @@ function calculateFinances() {
                 </li>`;
             });
             planHTML += `</ul>`;
-            
             if (tempBudget > 1) {
                  planHTML += `<div style="font-size:0.8rem; color:#94a3b8; margin-top:0.5rem;">Sobra: <strong>${formatMoney(tempBudget)}</strong> (A la hucha Magic)</div>`;
             }
@@ -345,7 +363,6 @@ function calculateFinances() {
             </div>`;
         }
     }
-
     detailsDiv.innerHTML = planHTML;
 }
 
@@ -414,7 +431,6 @@ function renderCollections() {
                     const isOwned = col.ownedList[idx];
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
-                    // AQUÍ ESTÁ EL ARREGLO DEL DATA-IMG PARA EVITAR EL CORTE DE COMILLAS
                     itemEl.innerHTML = `
                         <div style="display:flex; align-items:center; gap:1rem; width:100%; cursor:zoom-in;"
                              data-img="${item.image}"
@@ -543,11 +559,14 @@ window.toggleItem = (colId, idx) => {
         barEl.style.width = `${progress}%`;
         barEl.style.backgroundColor = isCompleted ? '#10b981' : '#6366f1';
     }
+    
+    // GUARDADO EN LA NUBE AUTOMÁTICO AL HACER CLIC
+    saveToDynamo();
 }
 
-salaryInput.addEventListener('input', (e) => { appData.salary = parseFloat(e.target.value); calculateFinances(); });
-expensesInput.addEventListener('input', (e) => { appData.expenses = parseFloat(e.target.value); calculateFinances(); });
-allocationInput.addEventListener('input', (e) => { appData.allocation = parseInt(e.target.value); calculateFinances(); });
+salaryInput.addEventListener('input', (e) => { appData.salary = parseFloat(e.target.value); calculateFinances(); saveToDynamo(); });
+expensesInput.addEventListener('input', (e) => { appData.expenses = parseFloat(e.target.value); calculateFinances(); saveToDynamo(); });
+allocationInput.addEventListener('input', (e) => { appData.allocation = parseInt(e.target.value); calculateFinances(); saveToDynamo(); });
 
 salaryInput.value = appData.salary;
 expensesInput.value = appData.expenses;
