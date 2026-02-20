@@ -139,6 +139,34 @@ function loadDataFromDynamo() {
     });
 }
 
+// NUEVO: Función para mostrar el aviso de guardado visual
+function showSaveNotification() {
+    let toast = document.getElementById('save-toast');
+    if(!toast) {
+        toast = document.createElement('div');
+        toast.id = 'save-toast';
+        toast.innerHTML = '☁️ Guardado en la nube';
+        toast.style.position = 'fixed';
+        toast.style.bottom = '20px';
+        toast.style.right = '20px';
+        toast.style.background = '#10b981';
+        toast.style.color = 'white';
+        toast.style.padding = '0.5rem 1rem';
+        toast.style.borderRadius = '999px';
+        toast.style.fontSize = '0.85rem';
+        toast.style.fontWeight = 'bold';
+        toast.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+        toast.style.zIndex = '999999';
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.3s';
+        document.body.appendChild(toast);
+    }
+    // Forzamos el redibujado para que reinicie la animación si se hace clic rápido
+    toast.style.opacity = '1';
+    clearTimeout(window.toastTimeout);
+    window.toastTimeout = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
+}
+
 function saveToDynamo() {
     if (!dbUserId) return; 
     const collectionsToSave = {};
@@ -154,8 +182,12 @@ function saveToDynamo() {
         }
     };
     docClient.put(params, (err, data) => {
-        if (err) console.error("Error subiendo datos:", err);
-        else console.log("Datos guardados en la nube ☁️");
+        if (err) {
+            console.error("Error subiendo datos:", err);
+        } else {
+            console.log("Datos guardados en la nube ☁️");
+            showSaveNotification(); // Muestra el aviso visual al guardar con éxito
+        }
     });
 }
 
@@ -300,7 +332,7 @@ function updateAllUI() {
     renderCollections();
 }
 
-function buildSavingsPanel(monthlyAdd) {
+function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
     const financePanel = document.querySelector('.finance-panel');
     let goalDiv = document.getElementById('savings-goal-panel');
     if (!goalDiv) {
@@ -313,14 +345,16 @@ function buildSavingsPanel(monthlyAdd) {
         financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
     }
 
-    const progressPercent = Math.min((appData.globalSavings / appData.savingsGoal) * 100, 100);
+    const progressPercent = Math.min((totalRealSavings / appData.savingsGoal) * 100, 100);
+    
+    // NUEVO DISEÑO DEL PANEL DE AHORRO CON SUMA AUTOMÁTICA
     goalDiv.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:1rem;">
             <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
                 🏆 META 10K <span style="font-size:0.8rem; color:#94a3b8; font-weight:normal">(Ahorro Total)</span>
             </div>
             <div style="text-align:right">
-                <span style="font-size:1.2rem; font-weight:bold; color:white">${formatMoney(appData.globalSavings)}</span>
+                <span style="font-size:1.2rem; font-weight:bold; color:white">${formatMoney(totalRealSavings)}</span>
                 <span style="color:#64748b"> / €10,000</span>
             </div>
         </div>
@@ -328,15 +362,18 @@ function buildSavingsPanel(monthlyAdd) {
             <div style="height:100%; width:${progressPercent}%; background:linear-gradient(90deg, #eab308, #f59e0b); transition:width 1s;"></div>
             <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; color:white; text-shadow:0 1px 2px black;">${progressPercent.toFixed(1)}%</div>
         </div>
-        <div style="margin-top:0.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; font-size:0.85rem;">
-            <div style="display:flex; align-items:center; gap:0.5rem;">
-                <span style="color:#94a3b8;">Llevas ahorrado:</span>
-                <div style="display:flex; align-items:center; background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.1rem 0.5rem;">
-                    <span style="color:white; margin-right:2px;">€</span>
-                    <input type="number" value="${appData.globalSavings}" style="background:transparent; border:none; color:white; font-weight:bold; width:80px; outline:none;" onchange="updateGlobalSavings(this.value)">
+        <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+                <div style="display:flex; align-items:center; gap:0.5rem;">
+                    <span style="color:#94a3b8;" title="Dinero ahorrado fuera de la aplicación">Ahorro Base (Manual):</span>
+                    <div style="display:flex; align-items:center; background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.1rem 0.5rem;">
+                        <span style="color:white; margin-right:2px;">€</span>
+                        <input type="number" value="${appData.globalSavings}" style="background:transparent; border:none; color:white; font-weight:bold; width:80px; outline:none;" onchange="updateGlobalSavings(this.value)">
+                    </div>
                 </div>
+                <div style="color:#94a3b8;">Ahorro App (Meses): <strong style="color:white;">+${formatMoney(accumulatedSavings)}</strong></div>
             </div>
-            <div style="color:#34d399">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
+            <div style="color:#34d399; text-align:right;">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
         </div>
     `;
 }
@@ -344,9 +381,25 @@ function buildSavingsPanel(monthlyAdd) {
 function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
     
+    // NUEVO: Cálculos históricos para sumar a la barra automáticamente
+    let accumulatedSavings = 0;
+    Object.values(appData.monthlyData).forEach(monthData => {
+        let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+        let mVar = monthData.variableExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+        let mDisp = (monthData.salary || 0) - mFixed - mVar;
+        if (mDisp > 0) {
+            let mHobby = mDisp * ((monthData.allocation || 30) / 100);
+            let mSavings = mDisp - mHobby;
+            accumulatedSavings += mSavings;
+        }
+    });
+
+    // Tu Ahorro Total ahora es (Lo que metiste a mano) + (Lo que ahorra la app sola)
+    const totalRealSavings = appData.globalSavings + accumulatedSavings;
+
     const disposable = curData.salary - totalFixed - totalVar;
     const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
-    const generalSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
+    const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
     
     let totalCostNeeded = 0; let totalItemsNeeded = 0; let magicRemaining = 0; let isMagicComplete = false;
 
@@ -367,13 +420,13 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-    buildSavingsPanel(generalSavings);
+    buildSavingsPanel(currentMonthSavings, totalRealSavings, accumulatedSavings);
 
     // Dibujar gráfico si la librería ya cargó
     if (typeof Chart !== 'undefined') {
-        drawDonutChart(totalFixed, totalVar, generalSavings, hobbyBudget);
+        drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
     } else {
-        window.ChartLoadedCallback = () => drawDonutChart(totalFixed, totalVar, generalSavings, hobbyBudget);
+        window.ChartLoadedCallback = () => drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
     }
 
     let recommendations = [];
@@ -393,8 +446,14 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
             if (col.pricePerItem <= tempBudget && (col.nextIndex + col.simulatedCount < col.totalItems)) {
                 tempBudget -= col.pricePerItem; col.simulatedCount++;
                 let existingRec = recommendations.find(r => r.name === col.name);
-                if (existingRec) { existingRec.items.push(col.nextIndex + existingRec.count); existingRec.count++; } 
-                else { recommendations.push({ name: col.name, icon: col.icon, count: 1, items: [col.nextIndex + 1] }); }
+                if (existingRec) { 
+                    // ARREGLADO: El bug visual de los tomos repetidos (+1 extra para ajustar el índice visualmente)
+                    existingRec.items.push(col.nextIndex + existingRec.count + 1); 
+                    existingRec.count++; 
+                } 
+                else { 
+                    recommendations.push({ name: col.name, icon: col.icon, count: 1, items: [col.nextIndex + 1] }); 
+                }
                 boughtSomething = true; break; 
             }
         }
@@ -501,18 +560,17 @@ window.showAnnualSummary = () => {
             <h2 style="color:var(--primary); margin-bottom:1rem;">📊 Resumen del Año ${year}</h2>
             <div style="background:#0f172a; padding:1.5rem; border-radius:8px; text-align:left; line-height:2;">
                 <div>Ingresos Totales: <strong style="color:white; float:right;">${formatMoney(tSalary)}</strong></div>
-                <div>Gastos Fijos Acumulados: <strong style="color:var(--danger); float:right;">${formatMoney(tFixed)}</strong></div>
-                <div>Gastos Variables Acumulados: <strong style="color:var(--danger); float:right;">${formatMoney(tVar)}</strong></div>
+                <div>Gastos Fijos Totales: <strong style="color:var(--danger); float:right;">${formatMoney(tFixed)}</strong></div>
+                <div>Gastos Variables Totales: <strong style="color:var(--danger); float:right;">${formatMoney(tVar)}</strong></div>
                 <hr style="border-color:#334155; margin:1rem 0;">
                 <div>Presupuesto Vicios Generado: <strong style="color:#818cf8; float:right;">${formatMoney(tHobbies)}</strong></div>
-                <div style="font-size:1.1rem; margin-top:0.5rem;">Ahorro Generado: <strong style="color:var(--success); float:right;">${formatMoney(tSavings)}</strong></div>
+                <div style="font-size:1.1rem; margin-top:0.5rem;">Ahorro App Generado: <strong style="color:var(--success); float:right;">${formatMoney(tSavings)}</strong></div>
             </div>
             <button class="btn btn-primary" style="margin-top:1.5rem; width:100%; padding:0.75rem; font-weight:bold;" onclick="document.getElementById('annual-modal').style.display='none'">Cerrar Resumen</button>
         </div>
     `;
     modal.style.display = 'flex';
 };
-
 
 function renderCollections() {
     const container = document.getElementById('collections-container');
