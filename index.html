@@ -73,10 +73,13 @@
                     </div>
                     <div id="fixed-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
                         <div id="fixed-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="new-fixed-name" placeholder="Ej. Internet" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.4rem; font-size: 0.8rem;">
-                            <input type="number" id="new-fixed-amount" placeholder="€" style="width: 70px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.4rem; font-size: 0.8rem;">
-                            <button class="btn btn-primary" onclick="addExpense('fixed')" style="padding: 0.4rem 0.75rem;">+</button>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="new-fixed-name" placeholder="Ej. Internet" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                                <input type="number" id="new-fixed-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                            </div>
+                            <button class="btn btn-primary" onclick="addExpense('fixed')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Fijo</button>
                         </div>
                     </div>
                 </div>
@@ -92,10 +95,13 @@
                     </div>
                     <div id="variable-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
                         <div id="variable-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        <div style="display: flex; gap: 0.5rem;">
-                            <input type="text" id="new-variable-name" placeholder="Ej. Comida" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.4rem; font-size: 0.8rem;">
-                            <input type="number" id="new-variable-amount" placeholder="€" style="width: 70px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.4rem; font-size: 0.8rem;">
-                            <button class="btn btn-primary" onclick="addExpense('variable')" style="padding: 0.4rem 0.75rem;">+</button>
+                        
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                            <div style="display: flex; gap: 0.5rem;">
+                                <input type="text" id="new-variable-name" placeholder="Ej. Comida" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                                <input type="number" id="new-variable-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                            </div>
+                            <button class="btn btn-primary" onclick="addExpense('variable')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Variable</button>
                         </div>
                     </div>
                 </div>
