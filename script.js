@@ -5,23 +5,53 @@ function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
 
-// Datos de cartas FIJOS
+// Datos de cartas de Magic ACTUALIZADOS Y ORDENADOS
 const initialMagicCards = [
-    { name: "Absolute Virtue", price: 3.49 },
-    { name: "Aerith Gainsborough", price: 1.79 },
-    { name: "Aettir and Priwen", price: 5.43 },
-    { name: "Ancient Adamantoise", price: 3.90 },
-    { name: "Ardyn, the Usurper", price: 1.08 },
-    { name: "A Realm Reborn", price: 0.28 },
-    { name: "Battle Menu", price: 0.20 },
-    { name: "Buster Sword", price: 31.19 },
-    { name: "Cecil, Dark Knight // Cecil, Redeemed Paladin", price: 1.25 },
-    { name: "Cid, Timeless Artificer", price: 4.18 },
-    { name: "Clive, Ifrit's Dominant // Ifrit, Warden of Inferno", price: 2.98 },
-    { name: "Cloud, Midgar Mercenary", price: 17.98 },
-    { name: "Dark Confidant", price: 3.66 },
-    // Relleno hasta 46
-    ...Array(33).fill(null).map((_, i) => ({ name: `Carta Master Set #${i + 14}`, price: 2.50 }))
+    { name: "A Realm Reborn", price: 0.28, image: "A Realm Reborn.jpg" },
+    { name: "Absolute Virtue", price: 3.49, image: "Absolute Virtue .jpg" },
+    { name: "Aerith Gainsborough", price: 1.79, image: "Aerith.jpg" },
+    { name: "Aettir and Priwen", price: 5.43, image: "Aettir and Priwen.jpg" },
+    { name: "Ancient Adamantoise", price: 3.90, image: "Ancient Adamantoise.jpg" },
+    { name: "Ardyn, the Usurper", price: 1.08, image: "Ardyn, the Usurper.jpg" },
+    { name: "Battle Menu", price: 0.20, image: "BattleMenu.jpg" },
+    { name: "Buster Sword", price: 31.19, image: "Buster Sword.jpg" },
+    { name: "Cecil, Dark Knight // Cecil, Redeemed Paladin", price: 1.25, image: "Cecil, Dark Knight : Cecil, Redeemed Paladin.jpg" },
+    { name: "Cid, Timeless Artificer", price: 4.18, image: "Cid, Timeless Artificer.jpg" },
+    { name: "Clive, Ifrit's Dominant // Ifrit, Warden of Inferno", price: 2.98, image: "Clive, Ifrit's Dominant : Ifrit, Warden of Inferno.jpg" },
+    { name: "Cloud, Midgar Mercenary", price: 17.98, image: "Cloud, Midgar Mercenary.jpg" },
+    { name: "Dark Confidant", price: 3.66, image: "Dark Confidant.jpg" },
+    { name: "Emet-Selch, Unsundered // Hades, Sorcerer of Eld", price: 2.50, image: "Emet-Selch, Unsundered : Hades, Sorcerer of Eld.jpg" },
+    { name: "Esper Origins // Summon: Esper Maduin", price: 2.50, image: "Esper Origins : Summon- Esper Maduin.jpg" },
+    { name: "Genji Glove", price: 2.50, image: "Genji Glove .jpg" },
+    { name: "Gogo, Master of Mimicry", price: 2.50, image: "Gogo, Master of Mimicry.jpg" },
+    { name: "Golbez, Crystal Collector", price: 2.50, image: "Golbez, Crystal Collector.jpg" },
+    { name: "Jecht, Reluctant Guardian // Braska's Final Aeon", price: 2.50, image: "Jecht, Reluctant Guardian : Braska's Final Aeon.jpg" },
+    { name: "Jumbo Cactuar", price: 2.50, image: "Jumbo Cactuar.jpg" },
+    { name: "Kefka, Court Mage // Kefka, Ruler of Ruin", price: 2.50, image: "Kefka, Court Mage : Kefka, Ruler of Ruin.jpg" },
+    { name: "Lightning, Army of One", price: 2.50, image: "Lightning, Andanada.jpg" },
+    { name: "Lindblum, Industrial Regency // Mage Siege", price: 2.50, image: "Lindblum, Industrial Regency : Mage Siege.jpg" },
+    { name: "Machinist's Arsenal", price: 2.50, image: "Machinist's Arsenal .jpg" },
+    { name: "Memories Returning", price: 2.50, image: "Memories Returning.jpg" },
+    { name: "Minwu, White Mage", price: 2.50, image: "Minwu, White Mage.jpg" },
+    { name: "Nibelheim Aflame", price: 2.50, image: "Nibelheim Aflame.jpg" },
+    { name: "Quina, Qu Gourmet", price: 2.50, image: "Quina, Qu Gourmet.jpg" },
+    { name: "Restoration Magic", price: 2.50, image: "Restoration Magic.jpg" },
+    { name: "Sephiroth, Fabled SOLDIER // Sephiroth, One-Winged Angel", price: 2.50, image: "Sephiroth, Fabled SOLDIER : Sephiroth, One-Winged Angel.jpg" },
+    { name: "Starting Town", price: 2.50, image: "Starting Town.jpg" },
+    { name: "Summon: Bahamut", price: 2.50, image: "Bahamut.jpg" },
+    { name: "Summon: G.F. Cerberus", price: 2.50, image: "Summon- G.F. Cerberus.jpg" },
+    { name: "Summon: Knights of Round", price: 2.50, image: "Summon- Knights of Round.jpg" },
+    { name: "Summon: Primal Odin", price: 2.50, image: "Summon- Primal Odin.jpg" },
+    { name: "Summon: Titan", price: 2.50, image: "Summon- Titan .jpg" },
+    { name: "Terra, Magical Adept // Esper Terra", price: 2.50, image: "Terra, Magical Adept : Esper Terra.jpg" },
+    { name: "The Earth Crystal", price: 2.50, image: "The Earth Crystal.jpg" },
+    { name: "The Fire Crystal", price: 2.50, image: "The Fire Crystal .jpg" },
+    { name: "Tifa Lockhart", price: 2.50, image: "Tifa Lockhart.jpg" },
+    { name: "Traveling Chocobo", price: 2.50, image: "Traveling Chocobo.jpg" },
+    { name: "Vaan, Street Thief", price: 2.50, image: "Vaan, Street Thief .jpg" },
+    { name: "Vivi Ornitier", price: 2.50, image: "Vivi Ornitier.jpg" },
+    { name: "Y'shtola Rhul", price: 2.50, image: "Y'shtola Rhul.jpg" },
+    { name: "Yuna, Hope of Spira", price: 2.50, image: "Yuna, la Esperanza de Spira.jpg" }
 ];
 
 let appData = {
@@ -37,7 +67,7 @@ let appData = {
             publisher: "Wizards",
             type: "cards",
             items: initialMagicCards,
-            ownedList: Array(46).fill(false),
+            ownedList: Array(45).fill(false),
             expanded: false,
             theme: "purple",
             icon: "🔮",
@@ -316,7 +346,7 @@ function calculateFinances() {
     detailsDiv.innerHTML = planHTML;
 }
 
-// --- RENDER FUNCTIONS (IGUAL QUE ANTES) ---
+// --- RENDER FUNCTIONS ---
 
 function renderCollections() {
     container.innerHTML = '';
@@ -383,11 +413,18 @@ function renderCollections() {
                     const isOwned = col.ownedList[idx];
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
+                    // NUEVO DISEÑO CON MINIATURA
                     itemEl.innerHTML = `
-                        <div class="check-box">${isOwned ? '✔' : ''}</div>
-                        <div style="overflow:hidden">
-                            <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis">${item.name}</div>
-                            <div style="font-size:0.75rem; color:#94a3b8">${formatMoney(item.price)}</div>
+                        <div style="display:flex; align-items:center; gap:1rem; width:100%">
+                            <div style="position:relative; width:45px; height:63px; border-radius:4px; overflow:hidden; border:1px solid #334155; flex-shrink:0;">
+                                <img src="MagicFFSet/${item.image}" alt="${item.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                                <div style="display:none; width:100%; height:100%; background:#334155; align-items:center; justify-content:center; font-size:0.8rem; color:#94a3b8;">?</div>
+                            </div>
+                            <div style="flex:1; overflow:hidden">
+                                <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${item.name}">${item.name}</div>
+                                <div style="font-size:0.75rem; color:#94a3b8">${formatMoney(item.price)}</div>
+                            </div>
+                            <div class="check-box">${isOwned ? '✔' : ''}</div>
                         </div>
                     `;
                     itemEl.onclick = () => toggleItem(col.id, idx);
@@ -466,10 +503,16 @@ window.toggleItem = (colId, idx) => {
     if (targetItem) {
         if (isOwned) {
             targetItem.classList.add('owned');
-            if(col.type === 'cards') targetItem.querySelector('.check-box').innerText = '✔';
+            if(col.type === 'cards') {
+                const checkBox = targetItem.querySelector('.check-box');
+                if (checkBox) checkBox.innerText = '✔';
+            }
         } else {
             targetItem.classList.remove('owned');
-            if(col.type === 'cards') targetItem.querySelector('.check-box').innerText = '';
+            if(col.type === 'cards') {
+                const checkBox = targetItem.querySelector('.check-box');
+                if (checkBox) checkBox.innerText = '';
+            }
         }
     }
 
@@ -503,7 +546,6 @@ window.toggleItem = (colId, idx) => {
 salaryInput.addEventListener('input', (e) => { appData.salary = parseFloat(e.target.value); calculateFinances(); });
 expensesInput.addEventListener('input', (e) => { appData.expenses = parseFloat(e.target.value); calculateFinances(); });
 allocationInput.addEventListener('input', (e) => { appData.allocation = parseInt(e.target.value); calculateFinances(); });
-
 
 // --- INIT ---
 // Sincronizar inputs con los datos iniciales de appData
