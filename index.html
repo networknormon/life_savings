@@ -5,25 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestor de Colecciones & Finanzas</title>
     <link rel="stylesheet" href="style.css">
-</head>
-<head>
-    <link rel="stylesheet" href="style.css">
     
     <script>
         const hash = window.location.hash;
         let token = localStorage.getItem('cognito_token');
 
+        // Si venimos de Cognito con un token en la URL, lo guardamos
         if (hash.includes("access_token=")) {
             const urlParams = new URLSearchParams(hash.replace('#', '?'));
             token = urlParams.get('access_token');
             localStorage.setItem('cognito_token', token);
+            // Limpiamos la URL para que no se vea el churrete de texto
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
+        // Si no hay token, patada y al login
         if (!token) {
             window.location.href = 'https://networknormon.github.io/life_savings/login.html';
         }
         
+        // Función para el botón de salir
         function logout() {
             localStorage.removeItem('cognito_token');
             window.location.href = 'https://networknormon.github.io/life_savings/login.html';
@@ -32,7 +33,6 @@
 </head>
 <body>
 
-    <!-- Header -->
     <header>
         <div class="container header-content">
             <div class="logo">
@@ -42,14 +42,12 @@
             <div class="badges">
                 <span class="badge success">Objetivo: 5 Colecciones</span>
                 <span class="badge warning" id="global-missing-count">Calculando...</span>
+                <button onclick="logout()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--danger); color: var(--danger);">Salir</button>
             </div>
         </div>
-        <div class="badges">
-            <span class="badge success">Objetivo: 5 Colecciones</span>
-            <span class="badge warning" id="global-missing-count">Calculando...</span>
-            <button onclick="logout()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--danger); color: var(--danger);">Salir</button>
-        </div>
     </header>
+
+    <main class="container">
 
     <main class="container">
         
