@@ -1,5 +1,10 @@
-// --- DATOS INICIALES Y HELPER ---
+// --- CARGA DINÁMICA DE CHART.JS ---
+const chartScript = document.createElement('script');
+chartScript.src = "https://cdn.jsdelivr.net/npm/chart.js";
+chartScript.onload = () => { if(window.ChartLoadedCallback) window.ChartLoadedCallback(); };
+document.head.appendChild(chartScript);
 
+// --- DATOS INICIALES Y HELPER ---
 function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
@@ -52,16 +57,14 @@ const initialMagicCards = [
     { name: "Yuna, Hope of Spira", price: 2.50, image: "Yuna, la Esperanza de Spira.jpg" }
 ];
 
-// NUEVA ESTRUCTURA DE DATOS (Manejando Meses e Historial)
 const today = new Date();
-const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`; // Formato "YYYY-MM"
+const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 
 let appData = {
-    globalSavings: 2100, // Ahorro total global (Editable)
+    globalSavings: 2100, 
     savingsGoal: 10000,
-    currentMonth: defaultMonthStr, // Mes actual seleccionado
+    currentMonth: defaultMonthStr, 
     monthlyData: {
-        // Estructura base para el mes actual
         [defaultMonthStr]: {
             salary: 1084.20,
             fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: 329.92 }],
@@ -94,7 +97,6 @@ AWS.config.credentials = new AWS.CognitoIdentityCredentials({
 const docClient = new AWS.DynamoDB.DocumentClient();
 let dbUserId = null;
 
-// Autenticamos y cargamos datos al entrar
 AWS.config.credentials.get((err) => {
     if (err) {
         console.error("Error validando token con AWS:", err);
@@ -106,41 +108,24 @@ AWS.config.credentials.get((err) => {
 });
 
 function loadDataFromDynamo() {
-    const params = {
-        TableName: 'ColeccionesData',
-        Key: { userId: dbUserId }
-    };
+    const params = { TableName: 'ColeccionesData', Key: { userId: dbUserId } };
     docClient.get(params, (err, data) => {
         if (err) {
             console.error("Error descargando datos:", err);
         } else if (data.Item) {
             console.log("Datos cargados desde la nube ☁️");
-            
-            // Cargar colecciones
             if (data.Item.collectionsData) {
                 const savedCollections = JSON.parse(data.Item.collectionsData);
-                appData.collections.forEach(col => {
-                    if(savedCollections[col.id]) col.ownedList = savedCollections[col.id];
-                });
+                appData.collections.forEach(col => { if(savedCollections[col.id]) col.ownedList = savedCollections[col.id]; });
             }
-            
-            // Cargar Finanzas (Con sistema de MIGRACIÓN segura si vienes de la versión antigua)
             if (data.Item.finances) {
                 const dbFin = data.Item.finances;
-                
-                // Si es el formato nuevo con meses
                 if (dbFin.monthlyData) {
                     appData.globalSavings = dbFin.globalSavings || 0;
                     appData.monthlyData = dbFin.monthlyData;
-                    
-                    // Si el mes actual no existe en la BD, lo creamos vacío copiando los fijos del mes anterior
-                    if (!appData.monthlyData[defaultMonthStr]) {
-                        createNewMonthProfile(defaultMonthStr);
-                    }
-                } 
-                // Si es el formato antiguo (solo números sueltos), lo migramos al mes actual
-                else if (dbFin.salary !== undefined) {
-                    appData.globalSavings = 2100; // Valor por defecto tuyo
+                    if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
+                } else if (dbFin.salary !== undefined) {
+                    appData.globalSavings = 2100;
                     appData.monthlyData[defaultMonthStr] = {
                         salary: dbFin.salary || 1084.20,
                         fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: dbFin.expenses || 0 }],
@@ -156,44 +141,35 @@ function loadDataFromDynamo() {
 
 function saveToDynamo() {
     if (!dbUserId) return; 
-    
     const collectionsToSave = {};
-    appData.collections.forEach(col => {
-        collectionsToSave[col.id] = col.ownedList;
-    });
+    appData.collections.forEach(col => { collectionsToSave[col.id] = col.ownedList; });
 
     const params = {
         TableName: 'ColeccionesData',
         Item: {
             userId: dbUserId,
             collectionsData: JSON.stringify(collectionsToSave),
-            finances: {
-                globalSavings: appData.globalSavings,
-                monthlyData: appData.monthlyData
-            },
+            finances: { globalSavings: appData.globalSavings, monthlyData: appData.monthlyData },
             lastUpdated: new Date().toISOString()
         }
     };
-
     docClient.put(params, (err, data) => {
         if (err) console.error("Error subiendo datos:", err);
         else console.log("Datos guardados en la nube ☁️");
     });
 }
 
-// --- LÓGICA DE MESES Y GASTOS DINÁMICOS ---
+// --- LÓGICA DE MESES Y GASTOS ---
 
 function createNewMonthProfile(monthStr) {
-    // Busca el último mes guardado para copiar los ingresos y gastos FIJOS
     const months = Object.keys(appData.monthlyData).sort();
     const lastMonth = months[months.length - 1];
-    
     if (lastMonth) {
         const lastData = appData.monthlyData[lastMonth];
         appData.monthlyData[monthStr] = {
             salary: lastData.salary,
-            fixedExpenses: JSON.parse(JSON.stringify(lastData.fixedExpenses)), // Copia exacta
-            variableExpenses: [], // Las variables empiezan en cero
+            fixedExpenses: JSON.parse(JSON.stringify(lastData.fixedExpenses)), 
+            variableExpenses: [], 
             allocation: lastData.allocation
         };
     } else {
@@ -223,46 +199,24 @@ window.addExpense = (type) => {
     const amount = parseFloat(amountInput.value);
     
     if (name && amount > 0) {
-        appData.monthlyData[appData.currentMonth][`${type}Expenses`].push({
-            id: Date.now(),
-            name: name,
-            amount: amount
-        });
-        nameInput.value = '';
-        amountInput.value = '';
-        updateAllUI();
-        saveToDynamo();
+        appData.monthlyData[appData.currentMonth][`${type}Expenses`].push({ id: Date.now(), name: name, amount: amount });
+        nameInput.value = ''; amountInput.value = '';
+        updateAllUI(); saveToDynamo();
     }
 };
 
 window.removeExpense = (type, id) => {
     const list = appData.monthlyData[appData.currentMonth][`${type}Expenses`];
     appData.monthlyData[appData.currentMonth][`${type}Expenses`] = list.filter(item => item.id !== id);
-    updateAllUI();
-    saveToDynamo();
+    updateAllUI(); saveToDynamo();
 };
 
-window.updateSalary = (val) => {
-    appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0;
-    updateAllUI();
-    saveToDynamo();
-};
-
-window.updateAllocation = (val) => {
-    appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0;
-    updateAllUI();
-    saveToDynamo();
-};
-
-window.updateGlobalSavings = (val) => {
-    appData.globalSavings = parseFloat(val) || 0;
-    updateAllUI(); // Esto repinta la barra y el plan de ataque
-    saveToDynamo();
-};
+window.updateSalary = (val) => { appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
+window.updateAllocation = (val) => { appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0; updateAllUI(); saveToDynamo(); };
+window.updateGlobalSavings = (val) => { appData.globalSavings = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
 
 function renderExpenseLists() {
     const curData = appData.monthlyData[appData.currentMonth];
-    
     const renderList = (type, array) => {
         const container = document.getElementById(`${type}-list`);
         let total = 0;
@@ -282,41 +236,73 @@ function renderExpenseLists() {
         document.getElementById(`total-${type}-display`).innerText = total.toFixed(2);
         return total;
     };
-
-    const totalFixed = renderList('fixed', curData.fixedExpenses);
-    const totalVar = renderList('variable', curData.variableExpenses);
-    
-    return { totalFixed, totalVar };
+    return { totalFixed: renderList('fixed', curData.fixedExpenses), totalVar: renderList('variable', curData.variableExpenses) };
 }
 
+// --- RENDERIZADO VISUAL Y GRÁFICOS ---
+const formatMoney = (amount) => { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount); };
 
-// --- LÓGICA CORE Y RENDERIZADO GLOBAL ---
+let mainChart = null;
+function drawDonutChart(fixed, variable, savings, hobbies) {
+    const stratBox = document.querySelector('.strategy-box');
+    stratBox.style.flexWrap = 'wrap'; 
+    stratBox.style.justifyContent = 'space-between';
+    
+    let chartContainer = document.getElementById('chart-container');
+    if (!chartContainer) {
+        chartContainer = document.createElement('div');
+        chartContainer.id = 'chart-container';
+        chartContainer.style.width = '220px';
+        chartContainer.style.height = '220px';
+        chartContainer.style.margin = '0 auto';
+        chartContainer.innerHTML = '<canvas id="financeChart"></canvas>';
+        stratBox.appendChild(chartContainer);
+    }
 
-const formatMoney = (amount) => {
-    return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
-};
+    const ctx = document.getElementById('financeChart');
+    if (!ctx) return;
+
+    const dataObj = {
+        labels: ['Fijos', 'Variables', 'Ahorro', 'Vicios'],
+        datasets: [{
+            data: [fixed, variable, savings, hobbies],
+            backgroundColor: ['#f43f5e', '#f59e0b', '#10b981', '#6366f1'],
+            borderWidth: 0,
+            hoverOffset: 4
+        }]
+    };
+
+    if (mainChart) {
+        mainChart.data = dataObj;
+        mainChart.update();
+    } else {
+        mainChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: dataObj,
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom', labels: { color: '#f8fafc', font: {size: 11}, padding: 10 } }
+                }
+            }
+        });
+    }
+}
 
 function updateAllUI() {
-    // 1. Sincronizar inputs básicos
     document.getElementById('month-selector').value = appData.currentMonth;
     document.getElementById('salary').value = appData.monthlyData[appData.currentMonth].salary;
     document.getElementById('allocation').value = appData.monthlyData[appData.currentMonth].allocation;
     document.getElementById('allocation-display').innerText = `${appData.monthlyData[appData.currentMonth].allocation}%`;
 
-    // 2. Renderizar listas de gastos y obtener los totales
     const { totalFixed, totalVar } = renderExpenseLists();
-    
-    // 3. Recalcular la matemática principal
     calculateFinances(totalFixed, totalVar);
-    
-    // 4. Renderizar colecciones
     renderCollections();
 }
 
 function buildSavingsPanel(monthlyAdd) {
     const financePanel = document.querySelector('.finance-panel');
     let goalDiv = document.getElementById('savings-goal-panel');
-    
     if (!goalDiv) {
         goalDiv = document.createElement('div');
         goalDiv.id = 'savings-goal-panel';
@@ -324,13 +310,10 @@ function buildSavingsPanel(monthlyAdd) {
         goalDiv.style.gridColumn = "1 / -1"; 
         goalDiv.style.background = "linear-gradient(to right, #1e293b, #0f172a)";
         goalDiv.style.border = "1px solid #eab308"; 
-        // Insertamos antes del strategy-box
         financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
     }
 
     const progressPercent = Math.min((appData.globalSavings / appData.savingsGoal) * 100, 100);
-
-    // Reconstruimos el HTML del panel (ahora con el INPUT editable)
     goalDiv.innerHTML = `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:1rem;">
             <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
@@ -358,36 +341,25 @@ function buildSavingsPanel(monthlyAdd) {
     `;
 }
 
-function calculateFinances(totalFixed, totalVar) {
+function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
     
-    // Matemática pura
     const disposable = curData.salary - totalFixed - totalVar;
     const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
     const generalSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
     
-    let totalCostNeeded = 0;
-    let totalItemsNeeded = 0;
-    let magicRemaining = 0;
-    let isMagicComplete = false;
+    let totalCostNeeded = 0; let totalItemsNeeded = 0; let magicRemaining = 0; let isMagicComplete = false;
 
     appData.collections.forEach(col => {
         if (col.type === 'cards') {
             const missingCards = col.items.filter((_, i) => !col.ownedList[i]);
             const cost = missingCards.reduce((acc, item) => acc + item.price, 0);
-            if (col.id === 1) {
-                magicRemaining += cost;
-                isMagicComplete = missingCards.length === 0;
-            }
-            totalCostNeeded += cost;
-            totalItemsNeeded += missingCards.length;
+            if (col.id === 1) { magicRemaining += cost; isMagicComplete = missingCards.length === 0; }
+            totalCostNeeded += cost; totalItemsNeeded += missingCards.length;
         } else {
             const owned = col.ownedList.filter(Boolean).length;
             const remaining = col.totalItems - owned;
-            if (remaining > 0) {
-                totalCostNeeded += (remaining * col.pricePerItem);
-                totalItemsNeeded += remaining;
-            }
+            if (remaining > 0) { totalCostNeeded += (remaining * col.pricePerItem); totalItemsNeeded += remaining; }
         }
     });
 
@@ -395,19 +367,21 @@ function calculateFinances(totalFixed, totalVar) {
     let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-    // Actualiza panel de Ahorro y Barra
     buildSavingsPanel(generalSavings);
 
-    // Estrategia
+    // Dibujar gráfico si la librería ya cargó
+    if (typeof Chart !== 'undefined') {
+        drawDonutChart(totalFixed, totalVar, generalSavings, hobbyBudget);
+    } else {
+        window.ChartLoadedCallback = () => drawDonutChart(totalFixed, totalVar, generalSavings, hobbyBudget);
+    }
+
     let recommendations = [];
     let tempBudget = spendingMoney;
     
-    let candidateCollections = appData.collections
-        .filter(c => c.id !== 1) 
-        .map(c => {
-            return { ...c, nextIndex: c.ownedList.indexOf(false), simulatedCount: 0 };
-        })
-        .filter(c => c.nextIndex !== -1);
+    let candidateCollections = appData.collections.filter(c => c.id !== 1).map(c => {
+        return { ...c, nextIndex: c.ownedList.indexOf(false), simulatedCount: 0 };
+    }).filter(c => c.nextIndex !== -1);
 
     candidateCollections.sort((a, b) => a.priority - b.priority || a.pricePerItem - b.pricePerItem);
 
@@ -415,27 +389,18 @@ function calculateFinances(totalFixed, totalVar) {
     while (tempBudget > 0 && candidateCollections.length > 0 && safetyLoop < 50) {
         let boughtSomething = false;
         safetyLoop++;
-
         for (let col of candidateCollections) {
             if (col.pricePerItem <= tempBudget && (col.nextIndex + col.simulatedCount < col.totalItems)) {
-                tempBudget -= col.pricePerItem;
-                col.simulatedCount++;
-                
+                tempBudget -= col.pricePerItem; col.simulatedCount++;
                 let existingRec = recommendations.find(r => r.name === col.name);
-                if (existingRec) {
-                    existingRec.items.push(col.nextIndex + existingRec.count); 
-                    existingRec.count++;
-                } else {
-                    recommendations.push({ name: col.name, icon: col.icon, count: 1, items: [col.nextIndex + 1] });
-                }
-                boughtSomething = true;
-                break; 
+                if (existingRec) { existingRec.items.push(col.nextIndex + existingRec.count); existingRec.count++; } 
+                else { recommendations.push({ name: col.name, icon: col.icon, count: 1, items: [col.nextIndex + 1] }); }
+                boughtSomething = true; break; 
             }
         }
         if (!boughtSomething) break;
     }
 
-    // Actualizar Textos
     document.getElementById('hobby-budget').innerText = formatMoney(hobbyBudget);
     document.getElementById('savings-suggestion').innerText = formatMoney(magicPiggyBank);
     document.getElementById('spending-money').innerText = formatMoney(spendingMoney);
@@ -443,7 +408,6 @@ function calculateFinances(totalFixed, totalVar) {
     document.getElementById('months-to-finish').innerText = months < 900 ? months : "∞";
     document.getElementById('global-missing-count').innerText = `Faltan ${totalItemsNeeded} items`;
 
-    // Inyectar HTML de Estrategia
     const stratText = document.querySelector('.strategy-text');
     let detailsDiv = document.getElementById('plan-details');
     if (!detailsDiv) {
@@ -472,13 +436,10 @@ function calculateFinances(totalFixed, totalVar) {
                 </li>`;
             });
             planHTML += `</ul>`;
-            if (tempBudget > 1) {
-                 planHTML += `<div style="font-size:0.8rem; color:#94a3b8; margin-top:0.5rem;">Sobra: <strong>${formatMoney(tempBudget)}</strong> (A la hucha Magic)</div>`;
-            }
+            if (tempBudget > 1) planHTML += `<div style="font-size:0.8rem; color:#94a3b8; margin-top:0.5rem;">Sobra: <strong>${formatMoney(tempBudget)}</strong> (A la hucha Magic)</div>`;
         } else if (spendingMoney > 0) {
             planHTML += `<div style="font-style:italic; color:#94a3b8; font-size:0.85rem">No alcanza para ningún tomo. ¡Todo a la hucha!</div>`;
         }
-
         if (!isMagicComplete) {
             planHTML += `<div style="margin-top:0.75rem; font-size:0.85rem; background:rgba(16, 185, 129, 0.1); padding:0.5rem; border-radius:0.5rem; border:1px solid rgba(16, 185, 129, 0.2)">
                 🔮 Para Magic: Guarda <strong style="color:#34d399">${formatMoney(magicPiggyBank)}</strong>
@@ -488,14 +449,77 @@ function calculateFinances(totalFixed, totalVar) {
     detailsDiv.innerHTML = planHTML;
 }
 
+// --- BOTÓN Y MODAL RESUMEN ANUAL ---
+document.addEventListener('DOMContentLoaded', () => {
+    const badgesContainer = document.querySelector('.badges');
+    const summaryBtn = document.createElement('button');
+    summaryBtn.className = 'btn';
+    summaryBtn.style.padding = '0.15rem 0.5rem';
+    summaryBtn.style.fontSize = '0.75rem';
+    summaryBtn.style.borderColor = 'var(--primary)';
+    summaryBtn.style.color = 'var(--primary)';
+    summaryBtn.innerHTML = '📊 Resumen Anual';
+    summaryBtn.onclick = window.showAnnualSummary;
+    // Insertarlo justo antes del botón de salir
+    badgesContainer.insertBefore(summaryBtn, badgesContainer.lastElementChild);
+});
+
+window.showAnnualSummary = () => {
+    const year = appData.currentMonth.split('-')[0];
+    let tSalary = 0, tFixed = 0, tVar = 0, tHobbies = 0, tSavings = 0;
+    
+    Object.keys(appData.monthlyData).forEach(month => {
+        if(month.startsWith(year)) {
+            const md = appData.monthlyData[month];
+            tSalary += md.salary || 0;
+            
+            let mFixed = 0, mVar = 0;
+            md.fixedExpenses.forEach(e => mFixed += e.amount);
+            md.variableExpenses.forEach(e => mVar += e.amount);
+            tFixed += mFixed;
+            tVar += mVar;
+            
+            const mDisp = (md.salary || 0) - mFixed - mVar;
+            if (mDisp > 0) {
+                const alloc = (md.allocation || 30) / 100;
+                tHobbies += (mDisp * alloc);
+                tSavings += (mDisp - (mDisp * alloc));
+            }
+        }
+    });
+    
+    let modal = document.getElementById('annual-modal');
+    if(!modal) {
+        modal = document.createElement('div');
+        modal.id = 'annual-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:400px; text-align:center;">
+            <h2 style="color:var(--primary); margin-bottom:1rem;">📊 Resumen del Año ${year}</h2>
+            <div style="background:#0f172a; padding:1.5rem; border-radius:8px; text-align:left; line-height:2;">
+                <div>Ingresos Totales: <strong style="color:white; float:right;">${formatMoney(tSalary)}</strong></div>
+                <div>Gastos Fijos Acumulados: <strong style="color:var(--danger); float:right;">${formatMoney(tFixed)}</strong></div>
+                <div>Gastos Variables Acumulados: <strong style="color:var(--danger); float:right;">${formatMoney(tVar)}</strong></div>
+                <hr style="border-color:#334155; margin:1rem 0;">
+                <div>Presupuesto Vicios Generado: <strong style="color:#818cf8; float:right;">${formatMoney(tHobbies)}</strong></div>
+                <div style="font-size:1.1rem; margin-top:0.5rem;">Ahorro Generado: <strong style="color:var(--success); float:right;">${formatMoney(tSavings)}</strong></div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:1.5rem; width:100%; padding:0.75rem; font-weight:bold;" onclick="document.getElementById('annual-modal').style.display='none'">Cerrar Resumen</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
+
+
 function renderCollections() {
     const container = document.getElementById('collections-container');
     container.innerHTML = '';
 
     appData.collections.forEach((col, colIndex) => {
-        let ownedCount = 0;
-        let totalCount = 0;
-        let remainingCost = 0;
+        let ownedCount = 0; let totalCount = 0; let remainingCost = 0;
 
         if (col.type === 'cards') {
             totalCount = col.items.length;
@@ -627,7 +651,6 @@ window.toggleExpand = (id) => {
 window.toggleItem = (colId, idx) => {
     const col = appData.collections.find(c => c.id === colId);
     if (!col) return;
-
     col.ownedList[idx] = !col.ownedList[idx];
     updateAllUI();
     saveToDynamo();
