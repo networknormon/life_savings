@@ -1,3 +1,5 @@
+// --- DATOS INICIALES ---
+
 function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
@@ -162,12 +164,10 @@ window.hideCardPreview = () => {
 
 window.moveCardPreview = (e) => {
     if (previewImg.style.display === 'block') {
-        let x = e.clientX + 20; // 20px a la derecha del ratón
-        let y = e.clientY - 125; // Centrado verticalmente respecto al ratón
+        let x = e.clientX + 20; 
+        let y = e.clientY - 125; 
         
-        // Evitar que se salga por la derecha
         if (x + 250 > window.innerWidth) x = e.clientX - 270;
-        // Evitar que se salga por abajo o arriba
         if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
         if (y < 10) y = 10;
 
@@ -414,10 +414,11 @@ function renderCollections() {
                     const isOwned = col.ownedList[idx];
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
-                    // AQUI ESTA LA MAGIA DEL HOVER CON EVENTOS JS
+                    // AQUÍ ESTÁ EL ARREGLO DEL DATA-IMG PARA EVITAR EL CORTE DE COMILLAS
                     itemEl.innerHTML = `
                         <div style="display:flex; align-items:center; gap:1rem; width:100%; cursor:zoom-in;"
-                             onmouseenter="showCardPreview(event, '${item.image}')" 
+                             data-img="${item.image}"
+                             onmouseenter="showCardPreview(event, this.getAttribute('data-img'))" 
                              onmouseleave="hideCardPreview()"
                              onmousemove="moveCardPreview(event)">
                             <div style="position:relative; width:45px; height:63px; border-radius:4px; overflow:hidden; border:1px solid #334155; flex-shrink:0; pointer-events:none;">
