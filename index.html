@@ -8,7 +8,7 @@
     
     <script>
         const hash = window.location.hash;
-        // Ahora guardamos la "identidad" completa (id_token) que exige DynamoDB
+        // Guardamos la identidad completa (id_token) que exige DynamoDB
         let idToken = localStorage.getItem('cognito_id_token');
 
         if (hash.includes("id_token=")) {
@@ -64,6 +64,13 @@
                         <input type="number" id="expenses" value="329.92">
                     </div>
                 </div>
+                <div class="card input-card">
+                    <label>Gastos Variables</label>
+                    <div class="input-wrapper minus">
+                        <span>€</span>
+                        <input type="number" id="variable-expenses" value="150.00">
+                    </div>
+                </div>
                 <div class="card slider-card">
                     <div class="slider-header">
                         <label>Inversión Mensual</label>
@@ -94,20 +101,6 @@
             </div>
 
     </main>
-
-    <div id="csv-modal" class="modal hidden">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Importar CSV de Magic</h2>
-                <button id="close-modal">×</button>
-            </div>
-            <p>Abre tu archivo <code>.csv</code>, copia todo el texto y pégalo abajo. El sistema buscará cartas con Regular:0 y Foils:0.</p>
-            <textarea id="csv-input" placeholder="Name,Regular,Foils,#,Set,Price..."></textarea>
-            <div class="modal-actions">
-                <button class="btn btn-primary" id="process-csv">Procesar Datos</button>
-            </div>
-        </div>
-    </div>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
     
