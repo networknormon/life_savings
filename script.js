@@ -1,4 +1,4 @@
-// --- DATOS INICIALES ---
+// --- DATOS INICIALES Y HELPER ---
 
 function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
@@ -52,13 +52,23 @@ const initialMagicCards = [
     { name: "Yuna, Hope of Spira", price: 2.50, image: "Yuna, la Esperanza de Spira.jpg" }
 ];
 
+// NUEVA ESTRUCTURA DE DATOS (Manejando Meses e Historial)
+const today = new Date();
+const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`; // Formato "YYYY-MM"
+
 let appData = {
-    salary: 1084.20,
-    expenses: 329.92, // Gastos Fijos
-    variableExpenses: 150.00, // Gastos Variables
-    allocation: 30,
-    currentSavings: 2100, 
-    savingsGoal: 10000,   
+    globalSavings: 2100, // Ahorro total global (Editable)
+    savingsGoal: 10000,
+    currentMonth: defaultMonthStr, // Mes actual seleccionado
+    monthlyData: {
+        // Estructura base para el mes actual
+        [defaultMonthStr]: {
+            salary: 1084.20,
+            fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: 329.92 }],
+            variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: 150.00 }],
+            allocation: 30
+        }
+    },
     collections: [
         { id: 1, name: "Magic: FF Master Set", publisher: "Wizards", type: "cards", items: initialMagicCards, ownedList: Array(45).fill(false), expanded: false, theme: "purple", icon: "🔮", priority: 3 },
         { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 },
@@ -103,27 +113,43 @@ function loadDataFromDynamo() {
     docClient.get(params, (err, data) => {
         if (err) {
             console.error("Error descargando datos:", err);
-        } else if (data.Item && data.Item.collectionsData) {
+        } else if (data.Item) {
             console.log("Datos cargados desde la nube ☁️");
-            const savedCollections = JSON.parse(data.Item.collectionsData);
             
-            appData.collections.forEach(col => {
-                if(savedCollections[col.id]) col.ownedList = savedCollections[col.id];
-            });
-            
-            if (data.Item.finances) {
-                 appData.salary = data.Item.finances.salary !== undefined ? data.Item.finances.salary : appData.salary;
-                 appData.expenses = data.Item.finances.expenses !== undefined ? data.Item.finances.expenses : appData.expenses;
-                 appData.variableExpenses = data.Item.finances.variableExpenses !== undefined ? data.Item.finances.variableExpenses : appData.variableExpenses;
-                 appData.allocation = data.Item.finances.allocation !== undefined ? data.Item.finances.allocation : appData.allocation;
-                 
-                 salaryInput.value = appData.salary;
-                 expensesInput.value = appData.expenses;
-                 variableExpensesInput.value = appData.variableExpenses;
-                 allocationInput.value = appData.allocation;
+            // Cargar colecciones
+            if (data.Item.collectionsData) {
+                const savedCollections = JSON.parse(data.Item.collectionsData);
+                appData.collections.forEach(col => {
+                    if(savedCollections[col.id]) col.ownedList = savedCollections[col.id];
+                });
             }
-            calculateFinances();
-            renderCollections();
+            
+            // Cargar Finanzas (Con sistema de MIGRACIÓN segura si vienes de la versión antigua)
+            if (data.Item.finances) {
+                const dbFin = data.Item.finances;
+                
+                // Si es el formato nuevo con meses
+                if (dbFin.monthlyData) {
+                    appData.globalSavings = dbFin.globalSavings || 0;
+                    appData.monthlyData = dbFin.monthlyData;
+                    
+                    // Si el mes actual no existe en la BD, lo creamos vacío copiando los fijos del mes anterior
+                    if (!appData.monthlyData[defaultMonthStr]) {
+                        createNewMonthProfile(defaultMonthStr);
+                    }
+                } 
+                // Si es el formato antiguo (solo números sueltos), lo migramos al mes actual
+                else if (dbFin.salary !== undefined) {
+                    appData.globalSavings = 2100; // Valor por defecto tuyo
+                    appData.monthlyData[defaultMonthStr] = {
+                        salary: dbFin.salary || 1084.20,
+                        fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: dbFin.expenses || 0 }],
+                        variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: dbFin.variableExpenses || 0 }],
+                        allocation: dbFin.allocation || 30
+                    };
+                }
+            }
+            updateAllUI();
         }
     });
 }
@@ -142,10 +168,8 @@ function saveToDynamo() {
             userId: dbUserId,
             collectionsData: JSON.stringify(collectionsToSave),
             finances: {
-                salary: appData.salary,
-                expenses: appData.expenses,
-                variableExpenses: appData.variableExpenses,
-                allocation: appData.allocation
+                globalSavings: appData.globalSavings,
+                monthlyData: appData.monthlyData
             },
             lastUpdated: new Date().toISOString()
         }
@@ -157,86 +181,189 @@ function saveToDynamo() {
     });
 }
 
-const salaryInput = document.getElementById('salary');
-const expensesInput = document.getElementById('expenses');
-const variableExpensesInput = document.getElementById('variable-expenses');
-const allocationInput = document.getElementById('allocation');
-const allocationDisplay = document.getElementById('allocation-display');
-const hobbyBudgetDisplay = document.getElementById('hobby-budget');
-const savingsDisplay = document.getElementById('savings-suggestion');
-const spendingDisplay = document.getElementById('spending-money');
-const magicCostDisplay = document.getElementById('magic-cost');
-const monthsDisplay = document.getElementById('months-to-finish');
-const container = document.getElementById('collections-container');
-const globalMissingDisplay = document.getElementById('global-missing-count');
+// --- LÓGICA DE MESES Y GASTOS DINÁMICOS ---
 
-// --- SISTEMA DE ZOOM GLOBAL DE CARTAS ---
-const previewImg = document.createElement('img');
-previewImg.id = 'global-card-preview';
-document.body.appendChild(previewImg);
+function createNewMonthProfile(monthStr) {
+    // Busca el último mes guardado para copiar los ingresos y gastos FIJOS
+    const months = Object.keys(appData.monthlyData).sort();
+    const lastMonth = months[months.length - 1];
+    
+    if (lastMonth) {
+        const lastData = appData.monthlyData[lastMonth];
+        appData.monthlyData[monthStr] = {
+            salary: lastData.salary,
+            fixedExpenses: JSON.parse(JSON.stringify(lastData.fixedExpenses)), // Copia exacta
+            variableExpenses: [], // Las variables empiezan en cero
+            allocation: lastData.allocation
+        };
+    } else {
+        appData.monthlyData[monthStr] = { salary: 0, fixedExpenses: [], variableExpenses: [], allocation: 30 };
+    }
+}
 
-window.showCardPreview = (e, imageSrc) => {
-    previewImg.src = `MagicFFSet/${imageSrc}`;
-    previewImg.style.display = 'block';
-    window.moveCardPreview(e);
+window.changeMonth = (newMonth) => {
+    if (!newMonth) return;
+    appData.currentMonth = newMonth;
+    if (!appData.monthlyData[newMonth]) {
+        createNewMonthProfile(newMonth);
+        saveToDynamo();
+    }
+    updateAllUI();
 };
 
-window.hideCardPreview = () => {
-    previewImg.style.display = 'none';
-    previewImg.src = '';
+window.togglePanel = (panelId) => {
+    const el = document.getElementById(panelId);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
 };
 
-window.moveCardPreview = (e) => {
-    if (previewImg.style.display === 'block') {
-        let x = e.clientX + 20; 
-        let y = e.clientY - 125; 
-        if (x + 250 > window.innerWidth) x = e.clientX - 270;
-        if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
-        if (y < 10) y = 10;
-        previewImg.style.left = `${x}px`;
-        previewImg.style.top = `${y}px`;
+window.addExpense = (type) => {
+    const nameInput = document.getElementById(`new-${type}-name`);
+    const amountInput = document.getElementById(`new-${type}-amount`);
+    const name = nameInput.value.trim();
+    const amount = parseFloat(amountInput.value);
+    
+    if (name && amount > 0) {
+        appData.monthlyData[appData.currentMonth][`${type}Expenses`].push({
+            id: Date.now(),
+            name: name,
+            amount: amount
+        });
+        nameInput.value = '';
+        amountInput.value = '';
+        updateAllUI();
+        saveToDynamo();
     }
 };
 
-const financePanel = document.querySelector('.finance-panel');
-if (!document.getElementById('savings-goal-panel')) {
-    const goalDiv = document.createElement('div');
-    goalDiv.id = 'savings-goal-panel';
-    goalDiv.className = 'card';
-    goalDiv.style.gridColumn = "1 / -1"; 
-    goalDiv.style.background = "linear-gradient(to right, #1e293b, #0f172a)";
-    goalDiv.style.border = "1px solid #eab308"; 
+window.removeExpense = (type, id) => {
+    const list = appData.monthlyData[appData.currentMonth][`${type}Expenses`];
+    appData.monthlyData[appData.currentMonth][`${type}Expenses`] = list.filter(item => item.id !== id);
+    updateAllUI();
+    saveToDynamo();
+};
+
+window.updateSalary = (val) => {
+    appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0;
+    updateAllUI();
+    saveToDynamo();
+};
+
+window.updateAllocation = (val) => {
+    appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0;
+    updateAllUI();
+    saveToDynamo();
+};
+
+window.updateGlobalSavings = (val) => {
+    appData.globalSavings = parseFloat(val) || 0;
+    updateAllUI(); // Esto repinta la barra y el plan de ataque
+    saveToDynamo();
+};
+
+function renderExpenseLists() {
+    const curData = appData.monthlyData[appData.currentMonth];
     
-    goalDiv.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
-            <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
-                🏆 META 10K <span style="font-size:0.8rem; color:#94a3b8; font-weight:normal">(Ahorro Total)</span>
-            </div>
-            <div style="text-align:right">
-                <span id="current-savings-text" style="font-size:1.2rem; font-weight:bold; color:white">€2,100</span>
-                <span style="color:#64748b"> / €10,000</span>
-            </div>
-        </div>
-        <div style="height:1.5rem; background:#334155; border-radius:999px; overflow:hidden; position:relative;">
-            <div id="savings-bar" style="height:100%; width:21%; background:linear-gradient(90deg, #eab308, #f59e0b); transition:width 1s;"></div>
-            <div id="savings-percent" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; color:white; text-shadow:0 1px 2px black;">21%</div>
-        </div>
-        <div style="margin-top:0.5rem; display:flex; justify-content:space-between; font-size:0.85rem;">
-            <div style="color:#94a3b8">Llevas ahorrado: <strong style="color:white">€${appData.currentSavings}</strong></div>
-            <div style="color:#34d399">Este mes sumas: <strong id="monthly-add">+€0.00</strong></div>
-        </div>
-    `;
-    financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
+    const renderList = (type, array) => {
+        const container = document.getElementById(`${type}-list`);
+        let total = 0;
+        container.innerHTML = '';
+        array.forEach(item => {
+            total += item.amount;
+            container.innerHTML += `
+                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:0.4rem 0.5rem; border-radius:4px; font-size:0.85rem;">
+                   <span style="color:#f8fafc; font-weight:500;">${item.name}</span>
+                   <div style="display:flex; align-items:center;">
+                       <span style="color:#94a3b8; margin-right:10px;">${formatMoney(item.amount)}</span>
+                       <button onclick="removeExpense('${type}', ${item.id})" style="background:transparent; border:none; color:var(--danger); cursor:pointer; font-weight:bold; font-size:1rem; padding:0 0.2rem;">×</button>
+                   </div>
+                </div>
+            `;
+        });
+        document.getElementById(`total-${type}-display`).innerText = total.toFixed(2);
+        return total;
+    };
+
+    const totalFixed = renderList('fixed', curData.fixedExpenses);
+    const totalVar = renderList('variable', curData.variableExpenses);
+    
+    return { totalFixed, totalVar };
 }
+
+
+// --- LÓGICA CORE Y RENDERIZADO GLOBAL ---
 
 const formatMoney = (amount) => {
     return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
 };
 
-function calculateFinances() {
-    // Ingresos - Fijos - Variables
-    const disposable = appData.salary - appData.expenses - appData.variableExpenses;
-    const hobbyBudget = disposable > 0 ? disposable * (appData.allocation / 100) : 0;
+function updateAllUI() {
+    // 1. Sincronizar inputs básicos
+    document.getElementById('month-selector').value = appData.currentMonth;
+    document.getElementById('salary').value = appData.monthlyData[appData.currentMonth].salary;
+    document.getElementById('allocation').value = appData.monthlyData[appData.currentMonth].allocation;
+    document.getElementById('allocation-display').innerText = `${appData.monthlyData[appData.currentMonth].allocation}%`;
+
+    // 2. Renderizar listas de gastos y obtener los totales
+    const { totalFixed, totalVar } = renderExpenseLists();
+    
+    // 3. Recalcular la matemática principal
+    calculateFinances(totalFixed, totalVar);
+    
+    // 4. Renderizar colecciones
+    renderCollections();
+}
+
+function buildSavingsPanel(monthlyAdd) {
+    const financePanel = document.querySelector('.finance-panel');
+    let goalDiv = document.getElementById('savings-goal-panel');
+    
+    if (!goalDiv) {
+        goalDiv = document.createElement('div');
+        goalDiv.id = 'savings-goal-panel';
+        goalDiv.className = 'card';
+        goalDiv.style.gridColumn = "1 / -1"; 
+        goalDiv.style.background = "linear-gradient(to right, #1e293b, #0f172a)";
+        goalDiv.style.border = "1px solid #eab308"; 
+        // Insertamos antes del strategy-box
+        financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
+    }
+
+    const progressPercent = Math.min((appData.globalSavings / appData.savingsGoal) * 100, 100);
+
+    // Reconstruimos el HTML del panel (ahora con el INPUT editable)
+    goalDiv.innerHTML = `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:1rem;">
+            <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
+                🏆 META 10K <span style="font-size:0.8rem; color:#94a3b8; font-weight:normal">(Ahorro Total)</span>
+            </div>
+            <div style="text-align:right">
+                <span style="font-size:1.2rem; font-weight:bold; color:white">${formatMoney(appData.globalSavings)}</span>
+                <span style="color:#64748b"> / €10,000</span>
+            </div>
+        </div>
+        <div style="height:1.5rem; background:#334155; border-radius:999px; overflow:hidden; position:relative;">
+            <div style="height:100%; width:${progressPercent}%; background:linear-gradient(90deg, #eab308, #f59e0b); transition:width 1s;"></div>
+            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; color:white; text-shadow:0 1px 2px black;">${progressPercent.toFixed(1)}%</div>
+        </div>
+        <div style="margin-top:0.75rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; font-size:0.85rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+                <span style="color:#94a3b8;">Llevas ahorrado:</span>
+                <div style="display:flex; align-items:center; background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.1rem 0.5rem;">
+                    <span style="color:white; margin-right:2px;">€</span>
+                    <input type="number" value="${appData.globalSavings}" style="background:transparent; border:none; color:white; font-weight:bold; width:80px; outline:none;" onchange="updateGlobalSavings(this.value)">
+                </div>
+            </div>
+            <div style="color:#34d399">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
+        </div>
+    `;
+}
+
+function calculateFinances(totalFixed, totalVar) {
+    const curData = appData.monthlyData[appData.currentMonth];
+    
+    // Matemática pura
+    const disposable = curData.salary - totalFixed - totalVar;
+    const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
     const generalSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
     
     let totalCostNeeded = 0;
@@ -268,15 +395,10 @@ function calculateFinances() {
     let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-    const monthlyAdd = generalSavings;
-    const projectedTotal = appData.currentSavings + monthlyAdd;
-    const progressPercent = (appData.currentSavings / appData.savingsGoal) * 100;
+    // Actualiza panel de Ahorro y Barra
+    buildSavingsPanel(generalSavings);
 
-    document.getElementById('savings-bar').style.width = `${progressPercent}%`;
-    document.getElementById('savings-percent').innerText = `${progressPercent.toFixed(1)}%`;
-    document.getElementById('current-savings-text').innerText = formatMoney(appData.currentSavings);
-    document.getElementById('monthly-add').innerText = `+${formatMoney(monthlyAdd)}`;
-
+    // Estrategia
     let recommendations = [];
     let tempBudget = spendingMoney;
     
@@ -304,9 +426,7 @@ function calculateFinances() {
                     existingRec.items.push(col.nextIndex + existingRec.count); 
                     existingRec.count++;
                 } else {
-                    recommendations.push({
-                        name: col.name, icon: col.icon, count: 1, items: [col.nextIndex + 1]
-                    });
+                    recommendations.push({ name: col.name, icon: col.icon, count: 1, items: [col.nextIndex + 1] });
                 }
                 boughtSomething = true;
                 break; 
@@ -315,17 +435,17 @@ function calculateFinances() {
         if (!boughtSomething) break;
     }
 
-    allocationDisplay.innerText = `${appData.allocation}%`;
-    hobbyBudgetDisplay.innerText = formatMoney(hobbyBudget);
-    savingsDisplay.innerText = formatMoney(magicPiggyBank);
-    spendingDisplay.innerText = formatMoney(spendingMoney);
-    magicCostDisplay.innerText = formatMoney(magicRemaining);
-    monthsDisplay.innerText = months < 900 ? months : "∞";
-    globalMissingDisplay.innerText = `Faltan ${totalItemsNeeded} items`;
+    // Actualizar Textos
+    document.getElementById('hobby-budget').innerText = formatMoney(hobbyBudget);
+    document.getElementById('savings-suggestion').innerText = formatMoney(magicPiggyBank);
+    document.getElementById('spending-money').innerText = formatMoney(spendingMoney);
+    document.getElementById('magic-cost').innerText = formatMoney(magicRemaining);
+    document.getElementById('months-to-finish').innerText = months < 900 ? months : "∞";
+    document.getElementById('global-missing-count').innerText = `Faltan ${totalItemsNeeded} items`;
 
+    // Inyectar HTML de Estrategia
     const stratText = document.querySelector('.strategy-text');
     let detailsDiv = document.getElementById('plan-details');
-    
     if (!detailsDiv) {
         detailsDiv = document.createElement('div');
         detailsDiv.id = 'plan-details';
@@ -336,12 +456,10 @@ function calculateFinances() {
     }
 
     let planHTML = '';
-    
     if (isMagicComplete && recommendations.length === 0 && totalItemsNeeded === 0) {
         planHTML = '<div style="color:#34d399; font-weight:bold">¡Todo Completado! Eres el rey del coleccionismo.</div>';
     } else {
         planHTML += `<h4 style="font-size:0.75rem; text-transform:uppercase; color:#94a3b8; margin-bottom:0.5rem; letter-spacing:1px">Lista de Compra Prioritaria:</h4>`;
-        
         if (recommendations.length > 0) {
             planHTML += `<ul style="list-style:none; font-size:0.9rem; padding:0;">`;
             recommendations.forEach(rec => {
@@ -371,6 +489,7 @@ function calculateFinances() {
 }
 
 function renderCollections() {
+    const container = document.getElementById('collections-container');
     container.innerHTML = '';
 
     appData.collections.forEach((col, colIndex) => {
@@ -485,14 +604,12 @@ function renderCollections() {
                             <div class="owned-overlay">✔</div>
                         `;
                     }
-
                     cover.onclick = () => toggleItem(col.id, idx);
                     mangaGrid.appendChild(cover);
                 });
                 bodyDiv.appendChild(mangaGrid);
             }
         }
-
         card.innerHTML = headerHTML;
         card.appendChild(bodyDiv);
         container.appendChild(card);
@@ -512,72 +629,37 @@ window.toggleItem = (colId, idx) => {
     if (!col) return;
 
     col.ownedList[idx] = !col.ownedList[idx];
-    const isOwned = col.ownedList[idx];
-
-    calculateFinances();
-
-    const card = document.getElementById(`col-${colId}`);
-    if (!card) return;
-
-    const selector = col.type === 'cards' ? '.item-row' : '.manga-cover';
-    const items = card.querySelectorAll(selector);
-    const targetItem = items[idx];
-
-    if (targetItem) {
-        if (isOwned) {
-            targetItem.classList.add('owned');
-            if(col.type === 'cards') {
-                const checkBox = targetItem.querySelector('.check-box');
-                if (checkBox) checkBox.innerText = '✔';
-            }
-        } else {
-            targetItem.classList.remove('owned');
-            if(col.type === 'cards') {
-                const checkBox = targetItem.querySelector('.check-box');
-                if (checkBox) checkBox.innerText = '';
-            }
-        }
-    }
-
-    let ownedCount = col.ownedList.filter(Boolean).length;
-    let totalCount = col.type === 'cards' ? col.items.length : col.totalItems;
-    let remainingCost = 0;
-
-    if (col.type === 'cards') {
-        remainingCost = col.items.reduce((acc, item, i) => !col.ownedList[i] ? acc + item.price : acc, 0);
-    } else {
-        remainingCost = (totalCount - ownedCount) * col.pricePerItem;
-    }
-
-    const progress = (ownedCount / totalCount) * 100;
-    const isCompleted = ownedCount >= totalCount;
-
-    const moneyEl = card.querySelector('.money-value');
-    if (moneyEl) moneyEl.innerText = isCompleted ? '¡Listo!' : formatMoney(remainingCost);
-
-    const countEl = card.querySelector('.col-meta-count');
-    if (countEl) countEl.innerText = `${ownedCount} / ${totalCount} items`;
-
-    const barEl = card.querySelector('.progress-bar');
-    if (barEl) {
-        barEl.style.width = `${progress}%`;
-        barEl.style.backgroundColor = isCompleted ? '#10b981' : '#6366f1';
-    }
-    
-    // GUARDADO EN LA NUBE AUTOMÁTICO AL HACER CLIC
+    updateAllUI();
     saveToDynamo();
 }
 
-// NUEVOS EVENT LISTENERS
-salaryInput.addEventListener('input', (e) => { appData.salary = parseFloat(e.target.value) || 0; calculateFinances(); saveToDynamo(); });
-expensesInput.addEventListener('input', (e) => { appData.expenses = parseFloat(e.target.value) || 0; calculateFinances(); saveToDynamo(); });
-variableExpensesInput.addEventListener('input', (e) => { appData.variableExpenses = parseFloat(e.target.value) || 0; calculateFinances(); saveToDynamo(); });
-allocationInput.addEventListener('input', (e) => { appData.allocation = parseInt(e.target.value) || 0; calculateFinances(); saveToDynamo(); });
+// --- SISTEMA DE ZOOM GLOBAL DE CARTAS ---
+const previewImg = document.createElement('img');
+previewImg.id = 'global-card-preview';
+document.body.appendChild(previewImg);
 
-salaryInput.value = appData.salary;
-expensesInput.value = appData.expenses;
-variableExpensesInput.value = appData.variableExpenses;
-allocationInput.value = appData.allocation;
+window.showCardPreview = (e, imageSrc) => {
+    previewImg.src = `MagicFFSet/${imageSrc}`;
+    previewImg.style.display = 'block';
+    window.moveCardPreview(e);
+};
 
-calculateFinances();
-renderCollections();
+window.hideCardPreview = () => {
+    previewImg.style.display = 'none';
+    previewImg.src = '';
+};
+
+window.moveCardPreview = (e) => {
+    if (previewImg.style.display === 'block') {
+        let x = e.clientX + 20; 
+        let y = e.clientY - 125; 
+        if (x + 250 > window.innerWidth) x = e.clientX - 270;
+        if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
+        if (y < 10) y = 10;
+        previewImg.style.left = `${x}px`;
+        previewImg.style.top = `${y}px`;
+    }
+};
+
+// INIT ARRANQUE BÁSICO
+updateAllUI();
