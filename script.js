@@ -4,9 +4,8 @@ chartScript.src = "https://cdn.jsdelivr.net/npm/chart.js";
 chartScript.onload = () => { if(window.ChartLoadedCallback) window.ChartLoadedCallback(); };
 document.head.appendChild(chartScript);
 
-// --- DETECCIÓN MODO VITRINA (SOLO LECTURA) ---
-const urlParams = new URLSearchParams(window.location.search);
-const isShowcase = urlParams.has('share');
+// --- DETECCIÓN MODO VITRINA ---
+const isShowcase = window.isShowcase;
 
 // --- DATOS INICIALES Y HELPER ---
 function generateOwned(total, ownedCount) {
@@ -72,7 +71,7 @@ let appData = {
         [defaultMonthStr]: {
             salary: 1084.20,
             fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: 329.92 }],
-            variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: 150.00, tag: "❓" }],
+            variableExpenses: [{ id: Date.now()+1, name: "❓ General Variables", amount: 150.00 }],
             allocation: 30
         }
     },
@@ -92,12 +91,12 @@ if (isShowcase) {
     document.getElementById('header-badges').innerHTML = '<span class="badge success" style="font-size:1rem;">👁️ Vitrina Pública (Solo Lectura)</span>';
     document.getElementById('main-title').innerText = "Colección Compartida";
     try {
-        const decodedData = JSON.parse(decodeURIComponent(escape(atob(urlParams.get('share')))));
+        const decodedData = JSON.parse(decodeURIComponent(escape(atob(new URLSearchParams(window.location.search).get('share')))));
         appData.collections = decodedData;
     } catch(e) { alert("Enlace corrupto o inválido."); }
 }
 
-// --- CONFIGURACIÓN AWS (Solo si NO es Showcase) ---
+// --- CONFIGURACIÓN AWS ---
 const docClient = isShowcase ? null : new AWS.DynamoDB.DocumentClient();
 let dbUserId = null;
 
@@ -118,7 +117,7 @@ if (!isShowcase) {
         if (!err) {
             dbUserId = AWS.config.credentials.identityId;
             loadDataFromDynamo();
-            checkPushNotifications(); // Revisa si hay que mandar recordatorio local
+            checkPushNotifications(); 
         }
     });
 }
@@ -130,14 +129,11 @@ function loadDataFromDynamo() {
         if (!err && data.Item) {
             if (data.Item.collectionsData) {
                 const savedCollections = JSON.parse(data.Item.collectionsData);
-                
-                // Mezclar colecciones guardadas con la estructura base + NUEVAS colecciones custom creadas
                 let finalCollections = [];
                 Object.keys(savedCollections).forEach(key => {
                     let id = parseInt(key);
                     let baseCol = appData.collections.find(c => c.id === id);
                     if (baseCol) {
-                        // Colección predeterminada
                         if (Array.isArray(savedCollections[id])) { baseCol.ownedList = savedCollections[id]; } 
                         else {
                             baseCol.ownedList = savedCollections[id].ownedList;
@@ -147,12 +143,10 @@ function loadDataFromDynamo() {
                         }
                         finalCollections.push(baseCol);
                     } else {
-                        // Es una colección custom creada por el usuario
                         finalCollections.push(savedCollections[id].fullData);
                     }
                 });
                 
-                // Añadir cualquier colección base que no estuviera guardada
                 appData.collections.forEach(bc => {
                     if(!finalCollections.find(fc => fc.id === bc.id)) finalCollections.push(bc);
                 });
@@ -175,7 +169,6 @@ function saveToDynamo() {
     if (!dbUserId || isShowcase) return; 
     const collectionsToSave = {};
     appData.collections.forEach(col => { 
-        // Si la ID > 10, asumimos que es Custom, guardamos su objeto entero para no perderla.
         if (col.id > 10) {
             collectionsToSave[col.id] = { ownedList: col.ownedList, fullData: col };
         } else {
@@ -235,11 +228,10 @@ function playVictorySound() {
         gain.connect(ctx.destination);
         osc.type = 'square';
         
-        // Melodía RPG de victoria rápida
-        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15); // E5
-        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3); // G5
-        osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.45); // C6
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); 
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15); 
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3); 
+        osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.45); 
         
         gain.gain.setValueAtTime(0.1, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 1.2);
@@ -252,11 +244,8 @@ function playVictorySound() {
 function checkCompletionAndCelebrate(colId) {
     const col = appData.collections.find(c => c.id === colId);
     if (!col) return;
-    
     let total = col.type === 'cards' ? col.items.length : col.totalItems;
     let owned = col.ownedList.filter(Boolean).length;
-    
-    // Si acaba de completarse (owned == total)
     if (owned === total && window.confetti) {
         confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, zIndex: 99999 });
         playVictorySound();
@@ -266,7 +255,6 @@ function checkCompletionAndCelebrate(colId) {
 
 // --- 🔗 VITRINA PÚBLICA (SHARE) ---
 window.shareShowcase = () => {
-    // Comprimimos appData.collections en base64 para la URL
     const payload = btoa(unescape(encodeURIComponent(JSON.stringify(appData.collections))));
     const shareUrl = window.location.origin + window.location.pathname + '?share=' + payload;
     
@@ -357,7 +345,6 @@ function checkPushNotifications() {
         const today = new Date();
         const d = today.getDate();
         const monthKey = appData.currentMonth;
-        // Si estamos a final de mes (28 o más) y no hemos avisado este mes
         if (d >= 28 && !localStorage.getItem('notified_' + monthKey)) {
             new Notification("📅 Fin de mes cercano", { 
                 body: "¡Recuerda revisar tus gastos variables y actualizar tu ahorro antes de que cambie el mes!", 
@@ -418,7 +405,7 @@ window.saveNewCollection = () => {
 
     if(name && total > 0 && price > 0) {
         const newCol = {
-            id: Date.now(), // ID única segura
+            id: Date.now(), 
             name: name,
             publisher: pub || 'Desconocido',
             type: "manga",
@@ -428,7 +415,7 @@ window.saveNewCollection = () => {
             expanded: true,
             theme: theme,
             icon: icon,
-            priority: 2 // Prioridad media por defecto
+            priority: 2 
         };
         appData.collections.push(newCol);
         document.getElementById('new-col-modal').style.display = 'none';
@@ -525,7 +512,6 @@ window.addExpense = (type) => {
     const name = nameInput.value.trim();
     const amount = parseFloat(amountInput.value);
     
-    // Si es variable, cogemos el tag
     let tag = "";
     if (type === 'variable') {
         tag = document.getElementById('new-variable-tag').value;
@@ -636,7 +622,6 @@ function updateAllUI() {
         const { totalFixed, totalVar } = renderExpenseLists();
         calculateFinances(totalFixed, totalVar);
     } else {
-        // En modo vitrina solo pintamos las colecciones
         let totalItemsNeeded = 0;
         appData.collections.forEach(col => {
             if (col.type === 'cards') { totalItemsNeeded += col.items.length - col.ownedList.filter(Boolean).length; } 
@@ -820,6 +805,55 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     detailsDiv.innerHTML = planHTML;
 }
 
+window.showAnnualSummary = () => {
+    const year = appData.currentMonth.split('-')[0];
+    let tSalary = 0, tFixed = 0, tVar = 0, tHobbies = 0, tSavings = 0;
+    
+    Object.keys(appData.monthlyData).forEach(month => {
+        if(month.startsWith(year)) {
+            const md = appData.monthlyData[month];
+            tSalary += md.salary || 0;
+            
+            let mFixed = 0, mVar = 0;
+            md.fixedExpenses.forEach(e => mFixed += e.amount);
+            md.variableExpenses.forEach(e => mVar += e.amount);
+            tFixed += mFixed;
+            tVar += mVar;
+            
+            const mDisp = (md.salary || 0) - mFixed - mVar;
+            if (mDisp > 0) {
+                const alloc = (md.allocation || 30) / 100;
+                tHobbies += (mDisp * alloc);
+                tSavings += (mDisp - (mDisp * alloc));
+            }
+        }
+    });
+    
+    let modal = document.getElementById('annual-modal');
+    if(!modal) {
+        modal = document.createElement('div');
+        modal.id = 'annual-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:400px; text-align:center;">
+            <h2 style="color:var(--primary); margin-bottom:1rem;">📊 Resumen del Año ${year}</h2>
+            <div style="background:#0f172a; padding:1.5rem; border-radius:8px; text-align:left; line-height:2;">
+                <div>Ingresos Totales: <strong style="color:white; float:right;">${formatMoney(tSalary)}</strong></div>
+                <div>Gastos Fijos Totales: <strong style="color:var(--danger); float:right;">${formatMoney(tFixed)}</strong></div>
+                <div>Gastos Variables Totales: <strong style="color:var(--danger); float:right;">${formatMoney(tVar)}</strong></div>
+                <hr style="border-color:#334155; margin:1rem 0;">
+                <div>Presupuesto Vicios Generado: <strong style="color:#818cf8; float:right;">${formatMoney(tHobbies)}</strong></div>
+                <div style="font-size:1.1rem; margin-top:0.5rem;">Ahorro App Generado: <strong style="color:var(--success); float:right;">${formatMoney(tSavings)}</strong></div>
+            </div>
+            <button class="btn btn-primary" style="margin-top:1.5rem; width:100%; padding:0.75rem; font-weight:bold;" onclick="document.getElementById('annual-modal').style.display='none'">Cerrar Resumen</button>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
+
 function renderCollections() {
     const container = document.getElementById('collections-container');
     container.innerHTML = '';
@@ -886,7 +920,7 @@ function renderCollections() {
                     const isOwned = col.ownedList[idx];
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
-                    if(isShowcase) itemEl.style.pointerEvents = 'none'; // Desactivar clics en vitrina
+                    if(isShowcase) itemEl.style.pointerEvents = 'none';
                     
                     itemEl.innerHTML = `
                         <div style="display:flex; align-items:center; gap:1rem; width:100%; cursor:zoom-in;"
@@ -915,7 +949,7 @@ function renderCollections() {
                 col.ownedList.forEach((isOwned, idx) => {
                     const cover = document.createElement('div');
                     cover.className = `manga-cover ${col.theme} ${isOwned ? 'owned' : ''}`;
-                    if(isShowcase) cover.style.pointerEvents = 'none'; // Desactivar clics en vitrina
+                    if(isShowcase) cover.style.pointerEvents = 'none';
                     
                     if (col.folder && col.ext) {
                         const imgPath = `${col.folder}/${idx + 1}.${col.ext}`;
@@ -927,7 +961,6 @@ function renderCollections() {
                             <div class="owned-overlay">✔</div>
                         `;
                     } else {
-                        // Colecciones Custom sin fotos
                         cover.innerHTML = `
                             <div class="cover-art" style="background:#1e293b; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:0.5rem; text-align:center; border:1px solid #334155;">
                                 <div style="font-size:0.6rem; color:#94a3b8">${col.publisher}</div>
@@ -991,7 +1024,7 @@ window.moveCardPreview = (e) => {
     }
 };
 
-// --- ESCÁNER DE CÓDIGOS DE BARRAS ---
+// --- ESCÁNER DE CÓDIGOS ---
 let html5QrcodeScanner = null;
 window.openScanner = () => {
     if(isShowcase) return;
