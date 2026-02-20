@@ -4,6 +4,10 @@ chartScript.src = "https://cdn.jsdelivr.net/npm/chart.js";
 chartScript.onload = () => { if(window.ChartLoadedCallback) window.ChartLoadedCallback(); };
 document.head.appendChild(chartScript);
 
+// --- DETECCIÓN MODO VITRINA (SOLO LECTURA) ---
+const urlParams = new URLSearchParams(window.location.search);
+const isShowcase = urlParams.has('share');
+
 // --- DATOS INICIALES Y HELPER ---
 function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
@@ -68,7 +72,7 @@ let appData = {
         [defaultMonthStr]: {
             salary: 1084.20,
             fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: 329.92 }],
-            variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: 150.00 }],
+            variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: 150.00, tag: "❓" }],
             allocation: 30
         }
     },
@@ -81,51 +85,78 @@ let appData = {
     ]
 };
 
-// --- CONFIGURACIÓN DE AWS DYNAMODB ---
-const REGION = 'eu-north-1';
-const USER_POOL_ID = 'eu-north-1_HT76kHw12';
-const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
+// --- PREPARAR MODO VITRINA ---
+if (isShowcase) {
+    document.getElementById('finance-section').style.display = 'none';
+    document.getElementById('create-collection-container').style.display = 'none';
+    document.getElementById('header-badges').innerHTML = '<span class="badge success" style="font-size:1rem;">👁️ Vitrina Pública (Solo Lectura)</span>';
+    document.getElementById('main-title').innerText = "Colección Compartida";
+    try {
+        const decodedData = JSON.parse(decodeURIComponent(escape(atob(urlParams.get('share')))));
+        appData.collections = decodedData;
+    } catch(e) { alert("Enlace corrupto o inválido."); }
+}
 
-AWS.config.region = REGION;
-AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-    IdentityPoolId: IDENTITY_POOL_ID,
-    Logins: {
-        [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: localStorage.getItem('cognito_id_token')
-    }
-});
-
-const docClient = new AWS.DynamoDB.DocumentClient();
+// --- CONFIGURACIÓN AWS (Solo si NO es Showcase) ---
+const docClient = isShowcase ? null : new AWS.DynamoDB.DocumentClient();
 let dbUserId = null;
 
-AWS.config.credentials.get((err) => {
-    if (err) {
-        console.error("Error validando token con AWS:", err);
-        return;
-    }
-    dbUserId = AWS.config.credentials.identityId;
-    console.log("Conectado a AWS con ID:", dbUserId);
-    loadDataFromDynamo();
-});
+if (!isShowcase) {
+    const REGION = 'eu-north-1';
+    const USER_POOL_ID = 'eu-north-1_HT76kHw12';
+    const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
+
+    AWS.config.region = REGION;
+    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+        IdentityPoolId: IDENTITY_POOL_ID,
+        Logins: {
+            [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: localStorage.getItem('cognito_id_token')
+        }
+    });
+
+    AWS.config.credentials.get((err) => {
+        if (!err) {
+            dbUserId = AWS.config.credentials.identityId;
+            loadDataFromDynamo();
+            checkPushNotifications(); // Revisa si hay que mandar recordatorio local
+        }
+    });
+}
 
 function loadDataFromDynamo() {
+    if(!docClient) return;
     const params = { TableName: 'ColeccionesData', Key: { userId: dbUserId } };
     docClient.get(params, (err, data) => {
-        if (err) {
-            console.error("Error descargando datos:", err);
-        } else if (data.Item) {
+        if (!err && data.Item) {
             if (data.Item.collectionsData) {
                 const savedCollections = JSON.parse(data.Item.collectionsData);
-                appData.collections.forEach(col => { 
-                    if(savedCollections[col.id]) {
-                        if (Array.isArray(savedCollections[col.id])) { col.ownedList = savedCollections[col.id]; } 
+                
+                // Mezclar colecciones guardadas con la estructura base + NUEVAS colecciones custom creadas
+                let finalCollections = [];
+                Object.keys(savedCollections).forEach(key => {
+                    let id = parseInt(key);
+                    let baseCol = appData.collections.find(c => c.id === id);
+                    if (baseCol) {
+                        // Colección predeterminada
+                        if (Array.isArray(savedCollections[id])) { baseCol.ownedList = savedCollections[id]; } 
                         else {
-                            col.ownedList = savedCollections[col.id].ownedList;
-                            if (col.type === 'cards' && savedCollections[col.id].prices) {
-                                col.items.forEach((item, idx) => { item.price = savedCollections[col.id].prices[idx] || item.price; });
+                            baseCol.ownedList = savedCollections[id].ownedList;
+                            if (baseCol.type === 'cards' && savedCollections[id].prices) {
+                                baseCol.items.forEach((item, idx) => { item.price = savedCollections[id].prices[idx] || item.price; });
                             }
                         }
-                    } 
+                        finalCollections.push(baseCol);
+                    } else {
+                        // Es una colección custom creada por el usuario
+                        finalCollections.push(savedCollections[id].fullData);
+                    }
                 });
+                
+                // Añadir cualquier colección base que no estuviera guardada
+                appData.collections.forEach(bc => {
+                    if(!finalCollections.find(fc => fc.id === bc.id)) finalCollections.push(bc);
+                });
+                appData.collections = finalCollections.sort((a,b) => a.id - b.id);
             }
             if (data.Item.finances) {
                 const dbFin = data.Item.finances;
@@ -133,18 +164,36 @@ function loadDataFromDynamo() {
                     appData.globalSavings = dbFin.globalSavings || 0;
                     appData.monthlyData = dbFin.monthlyData;
                     if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
-                } else if (dbFin.salary !== undefined) {
-                    appData.globalSavings = 2100;
-                    appData.monthlyData[defaultMonthStr] = {
-                        salary: dbFin.salary || 1084.20,
-                        fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: dbFin.expenses || 0 }],
-                        variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: dbFin.variableExpenses || 0 }],
-                        allocation: dbFin.allocation || 30
-                    };
                 }
             }
             updateAllUI();
         }
+    });
+}
+
+function saveToDynamo() {
+    if (!dbUserId || isShowcase) return; 
+    const collectionsToSave = {};
+    appData.collections.forEach(col => { 
+        // Si la ID > 10, asumimos que es Custom, guardamos su objeto entero para no perderla.
+        if (col.id > 10) {
+            collectionsToSave[col.id] = { ownedList: col.ownedList, fullData: col };
+        } else {
+            collectionsToSave[col.id] = { ownedList: col.ownedList, prices: col.type === 'cards' ? col.items.map(i => i.price) : undefined }; 
+        }
+    });
+
+    const params = {
+        TableName: 'ColeccionesData',
+        Item: {
+            userId: dbUserId,
+            collectionsData: JSON.stringify(collectionsToSave),
+            finances: { globalSavings: appData.globalSavings, monthlyData: appData.monthlyData },
+            lastUpdated: new Date().toISOString()
+        }
+    };
+    docClient.put(params, (err, data) => {
+        if (!err) showSaveNotification();
     });
 }
 
@@ -174,28 +223,223 @@ function showSaveNotification() {
     window.toastTimeout = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
-function saveToDynamo() {
-    if (!dbUserId) return; 
-    const collectionsToSave = {};
-    appData.collections.forEach(col => { 
-        collectionsToSave[col.id] = { ownedList: col.ownedList, prices: col.type === 'cards' ? col.items.map(i => i.price) : undefined }; 
-    });
 
-    const params = {
-        TableName: 'ColeccionesData',
-        Item: {
-            userId: dbUserId,
-            collectionsData: JSON.stringify(collectionsToSave),
-            finances: { globalSavings: appData.globalSavings, monthlyData: appData.monthlyData },
-            lastUpdated: new Date().toISOString()
-        }
-    };
-    docClient.put(params, (err, data) => {
-        if (!err) showSaveNotification();
-    });
+// --- 🔮 AUDIO Y CONFETI (GAMIFICACIÓN) ---
+function playVictorySound() {
+    if (isShowcase) return;
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'square';
+        
+        // Melodía RPG de victoria rápida
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15); // E5
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3); // G5
+        osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.45); // C6
+        
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + 1.2);
+        
+        osc.start();
+        osc.stop(ctx.currentTime + 1.2);
+    } catch(e) { console.log("Audio no soportado"); }
 }
 
-// --- 🔮 API SCRYFALL ---
+function checkCompletionAndCelebrate(colId) {
+    const col = appData.collections.find(c => c.id === colId);
+    if (!col) return;
+    
+    let total = col.type === 'cards' ? col.items.length : col.totalItems;
+    let owned = col.ownedList.filter(Boolean).length;
+    
+    // Si acaba de completarse (owned == total)
+    if (owned === total && window.confetti) {
+        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 }, zIndex: 99999 });
+        playVictorySound();
+    }
+}
+
+
+// --- 🔗 VITRINA PÚBLICA (SHARE) ---
+window.shareShowcase = () => {
+    // Comprimimos appData.collections en base64 para la URL
+    const payload = btoa(unescape(encodeURIComponent(JSON.stringify(appData.collections))));
+    const shareUrl = window.location.origin + window.location.pathname + '?share=' + payload;
+    
+    if (navigator.share) {
+        navigator.share({
+            title: 'Mi Colección',
+            text: '¡Mira mi estantería de colecciones y lo que me falta!',
+            url: shareUrl
+        }).catch(e => console.log('Share cancelado'));
+    } else {
+        navigator.clipboard.writeText(shareUrl);
+        alert("Enlace de Vitrina copiado al portapapeles. ¡Pégalo en WhatsApp!");
+    }
+};
+
+
+// --- 🏆 TROFEOS Y LOGROS ---
+window.openTrophies = () => {
+    let tFixed = 0, tVar = 0, tSavings = 0;
+    Object.values(appData.monthlyData).forEach(md => {
+        let mF = md.fixedExpenses.reduce((s, e) => s + e.amount, 0);
+        let mV = md.variableExpenses.reduce((s, e) => s + e.amount, 0);
+        let mD = (md.salary || 0) - mF - mV;
+        if (mD > 0) tSavings += mD - (mD * ((md.allocation || 30) / 100));
+    });
+    const totalRealSavings = appData.globalSavings + tSavings;
+
+    const vCol = appData.collections.find(c => c.name.includes("Vagabond"));
+    const vDone = vCol ? (vCol.ownedList.filter(Boolean).length === vCol.totalItems) : false;
+    
+    const mCol = appData.collections.find(c => c.id === 1);
+    const cloudIndex = mCol ? mCol.items.findIndex(i => i.name.includes("Cloud")) : -1;
+    const cDone = (cloudIndex !== -1) ? mCol.ownedList[cloudIndex] : false;
+
+    let completedCols = appData.collections.filter(c => c.ownedList.filter(Boolean).length === (c.type === 'cards' ? c.items.length : c.totalItems)).length;
+
+    const achievements = [
+        { name: "Primeros Pasos", desc: "Ahorra tus primeros 1.000€ en el total", icon: "🥉", unl: totalRealSavings >= 1000 },
+        { name: "Rey de la Espada", desc: "Completa la colección de Vagabond", icon: "🥈", unl: vDone },
+        { name: "Magnate de Midgar", desc: "Consigue la carta de Cloud, Midgar Mercenary", icon: "🥇", unl: cDone },
+        { name: "Coleccionista Novato", desc: "Completa al menos 1 colección entera", icon: "🎖️", unl: completedCols >= 1 }
+    ];
+
+    let modal = document.getElementById('trophies-modal');
+    if(!modal) {
+        modal = document.createElement('div');
+        modal.id = 'trophies-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    
+    let html = `<div class="modal-content" style="max-width:400px; text-align:center;">
+        <h2 style="color:var(--primary); margin-bottom:1rem;">🏆 Mis Trofeos</h2>
+        <div style="display:flex; flex-direction:column; gap:1rem; text-align:left;">`;
+        
+    achievements.forEach(a => {
+        const bg = a.unl ? 'linear-gradient(to right, rgba(16,185,129,0.1), transparent)' : '#0f172a';
+        const op = a.unl ? '1' : '0.4';
+        html += `<div style="background:${bg}; padding:1rem; border-radius:8px; border:1px solid ${a.unl?'var(--success)':'#334155'}; opacity:${op}; display:flex; align-items:center; gap:1rem;">
+            <div style="font-size:2.5rem; filter:${a.unl?'none':'grayscale(100%)'};">${a.icon}</div>
+            <div>
+                <div style="font-weight:bold; color:white; font-size:1.1rem;">${a.name}</div>
+                <div style="font-size:0.85rem; color:#94a3b8;">${a.desc}</div>
+            </div>
+        </div>`;
+    });
+    
+    html += `</div><button class="btn btn-primary" style="margin-top:1.5rem; width:100%; padding:0.75rem; font-weight:bold;" onclick="document.getElementById('trophies-modal').style.display='none'">Cerrar</button></div>`;
+    modal.innerHTML = html;
+    modal.style.display = 'flex';
+};
+
+// --- 🔔 NOTIFICACIONES LOCALES PUSH ---
+window.requestNotifications = () => {
+    if (!("Notification" in window)) {
+        alert("Tu navegador no soporta notificaciones.");
+        return;
+    }
+    Notification.requestPermission().then(permission => {
+        if (permission === "granted") {
+            new Notification("¡Notificaciones activadas!", { body: "Te avisaremos a final de mes para que actualices tus gastos.", icon: "icon-192.png" });
+        }
+    });
+};
+
+function checkPushNotifications() {
+    if ("Notification" in window && Notification.permission === "granted") {
+        const today = new Date();
+        const d = today.getDate();
+        const monthKey = appData.currentMonth;
+        // Si estamos a final de mes (28 o más) y no hemos avisado este mes
+        if (d >= 28 && !localStorage.getItem('notified_' + monthKey)) {
+            new Notification("📅 Fin de mes cercano", { 
+                body: "¡Recuerda revisar tus gastos variables y actualizar tu ahorro antes de que cambie el mes!", 
+                icon: "icon-192.png" 
+            });
+            localStorage.setItem('notified_' + monthKey, 'true');
+        }
+    }
+}
+
+
+// --- ➕ CREADOR DE COLECCIONES ---
+window.openCollectionModal = () => {
+    let modal = document.getElementById('new-col-modal');
+    if(!modal) {
+        modal = document.createElement('div');
+        modal.id = 'new-col-modal';
+        modal.className = 'modal';
+        document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width:400px;">
+            <h2 style="color:var(--primary); margin-bottom:1rem; text-align:center;">➕ Nueva Colección</h2>
+            <div style="display:flex; flex-direction:column; gap:0.8rem;">
+                <input type="text" id="nc-name" placeholder="Nombre (Ej. Bersek)" style="background:#0f172a; border:1px solid #334155; color:white; padding:0.6rem; border-radius:4px; width:100%; box-sizing:border-box;">
+                <input type="text" id="nc-pub" placeholder="Editorial (Ej. Panini)" style="background:#0f172a; border:1px solid #334155; color:white; padding:0.6rem; border-radius:4px; width:100%; box-sizing:border-box;">
+                <div style="display:flex; gap:0.5rem;">
+                    <input type="number" id="nc-total" placeholder="Nº Tomos" style="flex:1; background:#0f172a; border:1px solid #334155; color:white; padding:0.6rem; border-radius:4px;">
+                    <input type="number" id="nc-price" placeholder="Precio ud. (€)" style="flex:1; background:#0f172a; border:1px solid #334155; color:white; padding:0.6rem; border-radius:4px;">
+                </div>
+                <div style="display:flex; gap:0.5rem;">
+                    <select id="nc-icon" style="flex:1; background:#0f172a; border:1px solid #334155; color:white; padding:0.6rem; border-radius:4px;">
+                        <option value="🗡️">🗡️ Espada</option><option value="📖">📖 Libro</option><option value="🎮">🎮 Juego</option>
+                        <option value="🦸‍♂️">🦸‍♂️ Figura</option><option value="👽">👽 Alien</option>
+                    </select>
+                    <select id="nc-color" style="flex:1; background:#0f172a; border:1px solid #334155; color:white; padding:0.6rem; border-radius:4px;">
+                        <option value="col-theme-stone">Gris</option><option value="col-theme-blue">Azul</option>
+                        <option value="col-theme-orange">Naranja</option><option value="col-theme-yellow">Amarillo</option>
+                    </select>
+                </div>
+            </div>
+            <div style="display:flex; gap:0.5rem; margin-top:1.5rem;">
+                <button class="btn" style="flex:1; padding:0.75rem;" onclick="document.getElementById('new-col-modal').style.display='none'">Cancelar</button>
+                <button class="btn btn-primary" style="flex:1; padding:0.75rem; font-weight:bold;" onclick="saveNewCollection()">Crear</button>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+};
+
+window.saveNewCollection = () => {
+    const name = document.getElementById('nc-name').value;
+    const pub = document.getElementById('nc-pub').value;
+    const total = parseInt(document.getElementById('nc-total').value);
+    const price = parseFloat(document.getElementById('nc-price').value);
+    const icon = document.getElementById('nc-icon').value;
+    const theme = document.getElementById('nc-color').value;
+
+    if(name && total > 0 && price > 0) {
+        const newCol = {
+            id: Date.now(), // ID única segura
+            name: name,
+            publisher: pub || 'Desconocido',
+            type: "manga",
+            totalItems: total,
+            ownedList: Array(total).fill(false),
+            pricePerItem: price,
+            expanded: true,
+            theme: theme,
+            icon: icon,
+            priority: 2 // Prioridad media por defecto
+        };
+        appData.collections.push(newCol);
+        document.getElementById('new-col-modal').style.display = 'none';
+        updateAllUI();
+        saveToDynamo();
+    } else {
+        alert("Rellena el nombre, el número de tomos y el precio correctamente.");
+    }
+};
+
+// --- API SCRYFALL ---
 window.syncScryfallPrices = async () => {
     const btn = document.getElementById('scryfall-sync-btn');
     if (!btn) return;
@@ -229,8 +473,8 @@ window.syncScryfallPrices = async () => {
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    const badgesContainer = document.querySelector('.badges');
-    
+    if(isShowcase) return;
+    const badgesContainer = document.getElementById('header-badges');
     const scryfallBtn = document.createElement('button');
     scryfallBtn.id = 'scryfall-sync-btn';
     scryfallBtn.className = 'btn';
@@ -238,22 +482,11 @@ document.addEventListener('DOMContentLoaded', () => {
     scryfallBtn.style.fontSize = '0.75rem';
     scryfallBtn.style.borderColor = '#8b5cf6';
     scryfallBtn.style.color = '#8b5cf6';
-    scryfallBtn.style.marginRight = '0.5rem';
+    scryfallBtn.style.marginRight = '0.2rem';
     scryfallBtn.innerHTML = '🔄 Precios Magic';
     scryfallBtn.onclick = window.syncScryfallPrices;
-
-    const summaryBtn = document.createElement('button');
-    summaryBtn.className = 'btn';
-    summaryBtn.style.padding = '0.15rem 0.5rem';
-    summaryBtn.style.fontSize = '0.75rem';
-    summaryBtn.style.borderColor = 'var(--primary)';
-    summaryBtn.style.color = 'var(--primary)';
-    summaryBtn.innerHTML = '📊 Resumen Anual';
-    summaryBtn.onclick = window.showAnnualSummary;
     
-    const logoutBtn = badgesContainer.lastElementChild;
-    badgesContainer.insertBefore(scryfallBtn, logoutBtn);
-    badgesContainer.insertBefore(summaryBtn, logoutBtn);
+    badgesContainer.insertBefore(scryfallBtn, badgesContainer.children[4]);
 });
 
 
@@ -292,8 +525,18 @@ window.addExpense = (type) => {
     const name = nameInput.value.trim();
     const amount = parseFloat(amountInput.value);
     
+    // Si es variable, cogemos el tag
+    let tag = "";
+    if (type === 'variable') {
+        tag = document.getElementById('new-variable-tag').value;
+    }
+
     if (name && amount > 0) {
-        appData.monthlyData[appData.currentMonth][`${type}Expenses`].push({ id: Date.now(), name: name, amount: amount });
+        appData.monthlyData[appData.currentMonth][`${type}Expenses`].push({ 
+            id: Date.now(), 
+            name: type === 'variable' ? `${tag} ${name}` : name, 
+            amount: amount 
+        });
         nameInput.value = ''; amountInput.value = '';
         updateAllUI(); saveToDynamo();
     }
@@ -307,7 +550,6 @@ window.removeExpense = (type, id) => {
 
 window.updateSalary = (val) => { appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
 window.updateAllocation = (val) => { appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0; updateAllUI(); saveToDynamo(); };
-
 window.modifySavings = (multiplier) => {
     const input = document.getElementById('savings-modifier');
     const val = parseFloat(input.value);
@@ -318,6 +560,7 @@ window.modifySavings = (multiplier) => {
 };
 
 function renderExpenseLists() {
+    if(isShowcase) return { totalFixed: 0, totalVar: 0 };
     const curData = appData.monthlyData[appData.currentMonth];
     const renderList = (type, array) => {
         const container = document.getElementById(`${type}-list`);
@@ -346,6 +589,7 @@ const formatMoney = (amount) => { return new Intl.NumberFormat('es-ES', { style:
 
 let mainChart = null;
 function drawDonutChart(fixed, variable, savings, hobbies) {
+    if (isShowcase) return;
     const stratBox = document.querySelector('.strategy-box');
     stratBox.style.flexWrap = 'wrap'; 
     stratBox.style.justifyContent = 'space-between';
@@ -360,6 +604,7 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
         chartContainer.innerHTML = '<canvas id="financeChart"></canvas>';
         stratBox.appendChild(chartContainer);
     }
+
     const ctx = document.getElementById('financeChart');
     if (!ctx) return;
 
@@ -373,33 +618,37 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
         }]
     };
 
-    if (mainChart) {
-        mainChart.data = dataObj;
-        mainChart.update();
-    } else {
+    if (mainChart) { mainChart.data = dataObj; mainChart.update(); } 
+    else {
         mainChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: dataObj,
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { legend: { position: 'bottom', labels: { color: '#f8fafc', font: {size: 11}, padding: 10 } } }
-            }
+            type: 'doughnut', data: dataObj,
+            options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: '#f8fafc', font: {size: 11}, padding: 10 } } } }
         });
     }
 }
 
 function updateAllUI() {
-    document.getElementById('month-selector').value = appData.currentMonth;
-    document.getElementById('salary').value = appData.monthlyData[appData.currentMonth].salary;
-    document.getElementById('allocation').value = appData.monthlyData[appData.currentMonth].allocation;
-    document.getElementById('allocation-display').innerText = `${appData.monthlyData[appData.currentMonth].allocation}%`;
-
-    const { totalFixed, totalVar } = renderExpenseLists();
-    calculateFinances(totalFixed, totalVar);
+    if (!isShowcase) {
+        document.getElementById('month-selector').value = appData.currentMonth;
+        document.getElementById('salary').value = appData.monthlyData[appData.currentMonth].salary;
+        document.getElementById('allocation').value = appData.monthlyData[appData.currentMonth].allocation;
+        document.getElementById('allocation-display').innerText = `${appData.monthlyData[appData.currentMonth].allocation}%`;
+        const { totalFixed, totalVar } = renderExpenseLists();
+        calculateFinances(totalFixed, totalVar);
+    } else {
+        // En modo vitrina solo pintamos las colecciones
+        let totalItemsNeeded = 0;
+        appData.collections.forEach(col => {
+            if (col.type === 'cards') { totalItemsNeeded += col.items.length - col.ownedList.filter(Boolean).length; } 
+            else { totalItemsNeeded += col.totalItems - col.ownedList.filter(Boolean).length; }
+        });
+        document.getElementById('global-missing-count').innerText = `Faltan ${totalItemsNeeded} items`;
+    }
     renderCollections();
 }
 
 function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
+    if(isShowcase) return;
     const financePanel = document.querySelector('.finance-panel');
     let goalDiv = document.getElementById('savings-goal-panel');
     if (!goalDiv) {
@@ -449,7 +698,9 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
 }
 
 function calculateFinances(totalFixed = 0, totalVar = 0) {
+    if(isShowcase) return;
     const curData = appData.monthlyData[appData.currentMonth];
+    
     let accumulatedSavings = 0;
     Object.values(appData.monthlyData).forEach(monthData => {
         let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -569,55 +820,6 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     detailsDiv.innerHTML = planHTML;
 }
 
-window.showAnnualSummary = () => {
-    const year = appData.currentMonth.split('-')[0];
-    let tSalary = 0, tFixed = 0, tVar = 0, tHobbies = 0, tSavings = 0;
-    
-    Object.keys(appData.monthlyData).forEach(month => {
-        if(month.startsWith(year)) {
-            const md = appData.monthlyData[month];
-            tSalary += md.salary || 0;
-            
-            let mFixed = 0, mVar = 0;
-            md.fixedExpenses.forEach(e => mFixed += e.amount);
-            md.variableExpenses.forEach(e => mVar += e.amount);
-            tFixed += mFixed;
-            tVar += mVar;
-            
-            const mDisp = (md.salary || 0) - mFixed - mVar;
-            if (mDisp > 0) {
-                const alloc = (md.allocation || 30) / 100;
-                tHobbies += (mDisp * alloc);
-                tSavings += (mDisp - (mDisp * alloc));
-            }
-        }
-    });
-    
-    let modal = document.getElementById('annual-modal');
-    if(!modal) {
-        modal = document.createElement('div');
-        modal.id = 'annual-modal';
-        modal.className = 'modal';
-        document.body.appendChild(modal);
-    }
-    
-    modal.innerHTML = `
-        <div class="modal-content" style="max-width:400px; text-align:center;">
-            <h2 style="color:var(--primary); margin-bottom:1rem;">📊 Resumen del Año ${year}</h2>
-            <div style="background:#0f172a; padding:1.5rem; border-radius:8px; text-align:left; line-height:2;">
-                <div>Ingresos Totales: <strong style="color:white; float:right;">${formatMoney(tSalary)}</strong></div>
-                <div>Gastos Fijos Totales: <strong style="color:var(--danger); float:right;">${formatMoney(tFixed)}</strong></div>
-                <div>Gastos Variables Totales: <strong style="color:var(--danger); float:right;">${formatMoney(tVar)}</strong></div>
-                <hr style="border-color:#334155; margin:1rem 0;">
-                <div>Presupuesto Vicios Generado: <strong style="color:#818cf8; float:right;">${formatMoney(tHobbies)}</strong></div>
-                <div style="font-size:1.1rem; margin-top:0.5rem;">Ahorro App Generado: <strong style="color:var(--success); float:right;">${formatMoney(tSavings)}</strong></div>
-            </div>
-            <button class="btn btn-primary" style="margin-top:1.5rem; width:100%; padding:0.75rem; font-weight:bold;" onclick="document.getElementById('annual-modal').style.display='none'">Cerrar Resumen</button>
-        </div>
-    `;
-    modal.style.display = 'flex';
-};
-
 function renderCollections() {
     const container = document.getElementById('collections-container');
     container.innerHTML = '';
@@ -652,10 +854,12 @@ function renderCollections() {
                             <div class="col-meta">${col.publisher} • ${col.type === 'cards' ? 'Variable' : formatMoney(col.pricePerItem)}</div>
                         </div>
                     </div>
+                    ${isShowcase ? '' : `
                     <div class="money-data">
                         <span class="money-label">Falta Invertir</span>
                         <div class="money-value">${isCompleted ? '¡Listo!' : formatMoney(remainingCost)}</div>
                     </div>
+                    `}
                 </div>
                 <div class="progress-container">
                     <div class="progress-bar" style="width: ${progress}%; background-color: ${isCompleted ? '#10b981' : '#6366f1'}"></div>
@@ -682,9 +886,11 @@ function renderCollections() {
                     const isOwned = col.ownedList[idx];
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
+                    if(isShowcase) itemEl.style.pointerEvents = 'none'; // Desactivar clics en vitrina
+                    
                     itemEl.innerHTML = `
                         <div style="display:flex; align-items:center; gap:1rem; width:100%; cursor:zoom-in;"
-                             data-img="${item.image.replace(/"/g, '&quot;')}"
+                             data-img="${item.image ? item.image.replace(/"/g, '&quot;') : ''}"
                              onmouseenter="showCardPreview(event, this.getAttribute('data-img'))" 
                              onmouseleave="hideCardPreview()"
                              onmousemove="moveCardPreview(event)">
@@ -694,12 +900,12 @@ function renderCollections() {
                             </div>
                             <div style="flex:1; overflow:hidden; pointer-events:none;">
                                 <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${item.name}">${item.name}</div>
-                                <div style="font-size:0.75rem; color:#94a3b8">${formatMoney(item.price)}</div>
+                                ${isShowcase ? '' : `<div style="font-size:0.75rem; color:#94a3b8">${formatMoney(item.price)}</div>`}
                             </div>
                             <div class="check-box" style="pointer-events:none;">${isOwned ? '✔' : ''}</div>
                         </div>
                     `;
-                    itemEl.onclick = () => toggleItem(col.id, idx);
+                    if(!isShowcase) itemEl.onclick = () => toggleItem(col.id, idx);
                     listGrid.appendChild(itemEl);
                 });
                 bodyDiv.appendChild(listGrid);
@@ -709,6 +915,7 @@ function renderCollections() {
                 col.ownedList.forEach((isOwned, idx) => {
                     const cover = document.createElement('div');
                     cover.className = `manga-cover ${col.theme} ${isOwned ? 'owned' : ''}`;
+                    if(isShowcase) cover.style.pointerEvents = 'none'; // Desactivar clics en vitrina
                     
                     if (col.folder && col.ext) {
                         const imgPath = `${col.folder}/${idx + 1}.${col.ext}`;
@@ -720,19 +927,17 @@ function renderCollections() {
                             <div class="owned-overlay">✔</div>
                         `;
                     } else {
+                        // Colecciones Custom sin fotos
                         cover.innerHTML = `
-                            <div class="cover-art">
-                                <div class="spine-top">${col.publisher}</div>
-                                <div class="spine-main">
-                                    <span class="cover-title-vertical">${col.name}</span>
-                                    <span class="cover-number">${idx + 1}</span>
-                                </div>
-                                <div class="spine-bottom">★</div>
+                            <div class="cover-art" style="background:#1e293b; display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%; padding:0.5rem; text-align:center; border:1px solid #334155;">
+                                <div style="font-size:0.6rem; color:#94a3b8">${col.publisher}</div>
+                                <div style="font-weight:bold; font-size:0.8rem; margin:auto 0; color:white;">${col.name.split(' ')[0]}</div>
+                                <div style="font-size:1.5rem; color:#6366f1; font-weight:bold;">${idx + 1}</div>
                             </div>
                             <div class="owned-overlay">✔</div>
                         `;
                     }
-                    cover.onclick = () => toggleItem(col.id, idx);
+                    if(!isShowcase) cover.onclick = () => toggleItem(col.id, idx);
                     mangaGrid.appendChild(cover);
                 });
                 bodyDiv.appendChild(mangaGrid);
@@ -746,52 +951,50 @@ function renderCollections() {
 
 window.toggleExpand = (id) => {
     const col = appData.collections.find(c => c.id === id);
-    if(col) {
-        col.expanded = !col.expanded;
-        renderCollections(); 
-    }
+    if(col) { col.expanded = !col.expanded; renderCollections(); }
 }
 
 window.toggleItem = (colId, idx) => {
+    if (isShowcase) return;
     const col = appData.collections.find(c => c.id === colId);
     if (!col) return;
+    
     col.ownedList[idx] = !col.ownedList[idx];
+    
+    checkCompletionAndCelebrate(colId);
+    
     updateAllUI();
     saveToDynamo();
 }
 
-// --- SISTEMA DE ZOOM DE CARTAS ---
+// --- SISTEMA DE ZOOM ---
 const previewImg = document.createElement('img');
 previewImg.id = 'global-card-preview';
 document.body.appendChild(previewImg);
 
 window.showCardPreview = (e, imageSrc) => {
+    if(!imageSrc) return;
     previewImg.src = `MagicFFSet/${imageSrc}`;
     previewImg.style.display = 'block';
     window.moveCardPreview(e);
 };
 
-window.hideCardPreview = () => {
-    previewImg.style.display = 'none';
-    previewImg.src = '';
-};
+window.hideCardPreview = () => { previewImg.style.display = 'none'; previewImg.src = ''; };
 
 window.moveCardPreview = (e) => {
     if (previewImg.style.display === 'block') {
-        let x = e.clientX + 20; 
-        let y = e.clientY - 125; 
+        let x = e.clientX + 20; let y = e.clientY - 125; 
         if (x + 250 > window.innerWidth) x = e.clientX - 270;
         if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
         if (y < 10) y = 10;
-        previewImg.style.left = `${x}px`;
-        previewImg.style.top = `${y}px`;
+        previewImg.style.left = `${x}px`; previewImg.style.top = `${y}px`;
     }
 };
 
-// --- ESCÁNER DE CÓDIGOS DE BARRAS (NUEVO) ---
+// --- ESCÁNER DE CÓDIGOS DE BARRAS ---
 let html5QrcodeScanner = null;
-
 window.openScanner = () => {
+    if(isShowcase) return;
     let modal = document.getElementById('scanner-modal');
     if(!modal) {
         modal = document.createElement('div');
@@ -808,56 +1011,36 @@ window.openScanner = () => {
         document.body.appendChild(modal);
     }
     modal.style.display = 'flex';
-
-    if (!html5QrcodeScanner) {
-        html5QrcodeScanner = new Html5Qrcode("reader");
-    }
-
-    // Usamos la cámara trasera por defecto
+    if (!html5QrcodeScanner) html5QrcodeScanner = new Html5Qrcode("reader");
     html5QrcodeScanner.start({ facingMode: "environment" }, { fps: 10, qrbox: { width: 250, height: 150 } }, onScanSuccess)
-    .catch(err => {
-        document.getElementById('scanner-result').innerHTML = `<span style="color:#f43f5e">⚠️ Error al acceder a la cámara. Revisa los permisos de tu navegador.</span>`;
-    });
+    .catch(err => { document.getElementById('scanner-result').innerHTML = `<span style="color:#f43f5e">⚠️ Error al acceder a la cámara.</span>`; });
 };
 
 window.closeScanner = () => {
     const modal = document.getElementById('scanner-modal');
     if (modal) modal.style.display = 'none';
-    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) {
-        html5QrcodeScanner.stop().catch(e => console.error(e));
-    }
+    if (html5QrcodeScanner && html5QrcodeScanner.isScanning) html5QrcodeScanner.stop().catch(e => console.error(e));
     document.getElementById('scanner-result').innerHTML = '';
 };
 
 async function onScanSuccess(decodedText) {
     if(html5QrcodeScanner.isScanning) html5QrcodeScanner.stop(); 
-    
     const resDiv = document.getElementById('scanner-result');
     resDiv.innerHTML = `⏳ Buscando libro con ISBN: ${decodedText}...`;
-
     try {
-        // Buscamos el código en la base de datos gratuita de Google Books
         const response = await fetch(`https://www.googleapis.com/books/v1/volumes?q=isbn:${decodedText}`);
         const data = await response.json();
-
         if (data.items && data.items.length > 0) {
             const title = data.items[0].volumeInfo.title;
             resDiv.innerHTML = `📘 Detectado: <strong>${title}</strong><br>Analizando tus colecciones...`;
-
             let matchedCol = null;
             appData.collections.forEach(col => {
-                if (col.type === 'manga' && title.toLowerCase().includes(col.name.split(' ')[0].toLowerCase())) {
-                    matchedCol = col;
-                }
+                if (col.type === 'manga' && title.toLowerCase().includes(col.name.split(' ')[0].toLowerCase())) matchedCol = col;
             });
-
             if (matchedCol) {
-                // Buscamos cualquier número suelto en el título que indique el volumen
                 const numbers = title.match(/(\d+)/g);
                 let matchedVol = null;
-                if (numbers && numbers.length > 0) {
-                    matchedVol = parseInt(numbers[numbers.length - 1]) - 1; // -1 porque los arrays empiezan en 0
-                }
+                if (numbers && numbers.length > 0) matchedVol = parseInt(numbers[numbers.length - 1]) - 1; 
 
                 if (matchedVol !== null && matchedVol >= 0 && matchedVol < matchedCol.totalItems) {
                     const isOwned = matchedCol.ownedList[matchedVol];
@@ -872,24 +1055,11 @@ async function onScanSuccess(decodedText) {
                             </div>
                         `;
                     }
-                } else {
-                    resDiv.innerHTML = `Reconocido como ${matchedCol.name}, pero Google no devuelve un número de tomo exacto para vincularlo automáticamente.`;
-                }
-            } else {
-                resDiv.innerHTML = `<span style="color:#f43f5e;">El libro es "${title}", pero no parece pertenecer a ninguna de tus colecciones actuales.</span>`;
-            }
-        } else {
-            resDiv.innerHTML = `❌ El código ${decodedText} no existe en la base de datos global.`;
-        }
-    } catch (e) {
-        resDiv.innerHTML = `❌ Error de conexión al buscar el libro.`;
-    }
+                } else resDiv.innerHTML = `Reconocido como ${matchedCol.name}, pero no se detecta el número de tomo.`;
+            } else resDiv.innerHTML = `<span style="color:#f43f5e;">El libro es "${title}", pero no pertenece a tus colecciones actuales.</span>`;
+        } else resDiv.innerHTML = `❌ El código ${decodedText} no existe en la base de datos de Google.`;
+    } catch (e) { resDiv.innerHTML = `❌ Error de conexión al buscar el libro.`; }
 }
+window.addScannedItem = (colId, idx) => { toggleItem(colId, idx); closeScanner(); };
 
-window.addScannedItem = (colId, idx) => {
-    toggleItem(colId, idx);
-    closeScanner();
-};
-
-// INIT ARRANQUE BÁSICO
-updateAllUI();
+if (isShowcase) { updateAllUI(); }
