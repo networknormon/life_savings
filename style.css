@@ -283,26 +283,62 @@ input[type="range"] {
 .check-box { width: 1.25rem; height: 1.25rem; border: 2px solid #475569; border-radius: 4px; display: grid; place-items: center; }
 .item-row.owned .check-box { background: var(--primary); border-color: var(--primary); }
 
-/* MANGA COVERS GRID */
+/* MANGA COVERS GRID - LA ESTANTERÍA VIRTUAL */
 .manga-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-    gap: 1rem;
+    gap: 1.25rem;
+    padding: 1rem 0;
 }
 
+/* 1. ESTADO POR DEFECTO: HUECO VACÍO (NO LO TIENES) */
 .manga-cover {
     aspect-ratio: 2/3;
-    background: #f1f5f9;
+    background: #0f172a; /* Fondo oscuro */
     position: relative;
     border-radius: 4px;
     cursor: pointer;
     overflow: hidden;
-    transition: transform 0.2s;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.5);
+    transition: all 0.3s ease;
+    
+    /* Efecto de "falta por rellenar" */
+    filter: grayscale(100%) brightness(0.4); 
+    border: 1px dashed #475569;
+    box-shadow: inset 0 0 15px rgba(0,0,0,0.8);
 }
 
-.manga-cover:hover { transform: translateY(-5px); z-index: 10; }
-.manga-cover.owned { filter: grayscale(100%) opacity(0.4); transform: scale(0.95); }
+.manga-cover:hover { 
+    transform: translateY(-3px); 
+    filter: grayscale(50%) brightness(0.7); 
+    border-color: var(--primary);
+}
+
+/* 2. ESTADO COMPLETADO: LIBRO EN LA ESTANTERÍA (SÍ LO TIENES) */
+.manga-cover.owned { 
+    filter: none; /* A todo color */
+    border: none;
+    transform: scale(1.05); /* Ligeramente más grande para destacar */
+    box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.7), -1px -1px 2px rgba(255, 255, 255, 0.1);
+    z-index: 2;
+}
+
+.manga-cover.owned:hover { 
+    transform: translateY(-8px) scale(1.05); 
+    box-shadow: 0 12px 20px -5px rgba(16, 185, 129, 0.5); /* Brillo verde esmeralda al pasar el ratón */
+    z-index: 10; 
+}
+
+/* Quitamos la superposición verde gigante que tapaba la portada */
+.owned-overlay { display: none !important; }
+
+/* Efecto opcional: Un pequeño "brillo" sobre las portadas compradas */
+.manga-cover.owned::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.1) 25%, transparent 30%);
+    pointer-events: none;
+}
 
 /* Estilo específico para simular portada Ivrea/Planeta */
 .cover-art {
@@ -340,18 +376,6 @@ input[type="range"] {
     color: white;
     white-space: nowrap;
 }
-
-.owned-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(16, 185, 129, 0.6);
-    display: none;
-    align-items: center;
-    justify-content: center;
-    font-size: 2rem;
-}
-
-.manga-cover.owned .owned-overlay { display: flex; }
 
 /* Modal */
 .modal {
