@@ -499,24 +499,32 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
 function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
     
-    let accumulatedSavings = 0;
-    Object.values(appData.monthlyData).forEach(monthData => {
-        let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-        let mVar = monthData.variableExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-        let mDisp = (monthData.salary || 0) - mFixed - mVar;
-        if (mDisp > 0) {
-            let mHobby = mDisp * ((monthData.allocation || 30) / 100);
-            let mSavings = mDisp - mHobby;
-            accumulatedSavings += mSavings;
+    // 1. CÁLCULO DEL DISPONIBLE REAL DEL MES ACTUAL
+    const income = curData.salary || 0;
+    const totalOut = totalFixed + totalVar;
+    const disposable = Math.max(0, income - totalOut);
+
+    // 2. REPARTO DEL DISPONIBLE (SEGÚN SLIDER)
+    // El % del slider es para GASTAR (Hobby), el resto es para AHORRAR (Meta 10k)
+    const hobbyPercent = curData.allocation / 100;
+    const hobbyBudget = disposable * hobbyPercent;
+    const currentMonthSavings = disposable - hobbyBudget; 
+
+    // 3. CÁLCULO DEL HISTÓRICO (Meses pasados + Ajustes manuales)
+    let historicalAppSavings = 0;
+    Object.keys(appData.monthlyData).forEach(month => {
+        if (month !== appData.currentMonth) { // Sumamos solo meses cerrados
+            const md = appData.monthlyData[month];
+            const mFixed = md.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+            const mVar = md.variableExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+            const mDisp = Math.max(0, (md.salary || 0) - mFixed - mVar);
+            const mHobbyPercent = (md.allocation || 30) / 100;
+            historicalAppSavings += (mDisp * (1 - mHobbyPercent));
         }
     });
 
-    const totalRealSavings = appData.globalSavings + accumulatedSavings;
-
-    const disposable = curData.salary - totalFixed - totalVar;
-    const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
-    const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
-    
+    // TOTAL META 10K = Ajustes manuales + Meses pasados + Ahorro mes actual
+    const totalRealSavings = appData.globalSavings + historicalAppSavings + currentMonthSavings;
     let totalCostNeeded = 0; let totalItemsNeeded = 0; let magicRemaining = 0; let isMagicComplete = false;
 
     appData.collections.forEach(col => {
