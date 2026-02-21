@@ -118,6 +118,7 @@ function loadDataFromDynamo() {
                 const savedCollections = JSON.parse(data.Item.collectionsData);
                 appData.collections.forEach(col => { 
                     if(savedCollections[col.id]) {
+                        // MIGRACIÓN: Comprobamos si el guardado es el antiguo (solo un array) o el nuevo (con precios)
                         if (Array.isArray(savedCollections[col.id])) {
                             col.ownedList = savedCollections[col.id];
                         } else {
@@ -182,6 +183,7 @@ function saveToDynamo() {
     if (!dbUserId) return; 
     const collectionsToSave = {};
     appData.collections.forEach(col => { 
+        // NUEVO: Guardamos tanto la propiedad como los precios
         collectionsToSave[col.id] = {
             ownedList: col.ownedList,
             prices: col.type === 'cards' ? col.items.map(i => i.price) : undefined
@@ -223,12 +225,16 @@ window.syncScryfallPrices = async () => {
 
     for (let i = 0; i < magicCol.items.length; i++) {
         const card = magicCol.items[i];
+        
+        // Limpiamos el nombre: Si es una carta doble (ej. Cecil // Paladin), Scryfall la encuentra solo buscando la primera cara.
         let searchName = card.name.split(' // ')[0].trim();
         
         try {
+            // Usamos Fuzzy search para evitar fallos por comas o apóstrofes raros
             const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(searchName)}`);
             if (res.ok) {
                 const data = await res.json();
+                // Priorizamos Euros, si no Dolares
                 const newPrice = data.prices?.eur || data.prices?.usd;
                 if (newPrice) {
                     card.price = parseFloat(newPrice);
@@ -240,12 +246,14 @@ window.syncScryfallPrices = async () => {
 
         updatedCount++;
         btn.innerHTML = `⏳ Leyendo... ${updatedCount}/${magicCol.items.length}`;
+
+        // ESPERA VITAL: Scryfall banea IPs si hacemos más de 10 peticiones por segundo.
         await new Promise(r => setTimeout(r, 120)); 
     }
 
     btn.innerHTML = '✅ ¡Mercado Actualizado!';
-    saveToDynamo();  
-    updateAllUI();   
+    saveToDynamo();  // Guardamos los nuevos precios
+    updateAllUI();   // Refrescamos toda la web
 
     setTimeout(() => {
         btn.innerHTML = '🔄 Precios Magic';
@@ -258,17 +266,19 @@ window.syncScryfallPrices = async () => {
 document.addEventListener('DOMContentLoaded', () => {
     const badgesContainer = document.querySelector('.badges');
     
+    // Botón API Scryfall
     const scryfallBtn = document.createElement('button');
     scryfallBtn.id = 'scryfall-sync-btn';
     scryfallBtn.className = 'btn';
     scryfallBtn.style.padding = '0.15rem 0.5rem';
     scryfallBtn.style.fontSize = '0.75rem';
-    scryfallBtn.style.borderColor = '#8b5cf6';
+    scryfallBtn.style.borderColor = '#8b5cf6'; // Morado Magic
     scryfallBtn.style.color = '#8b5cf6';
     scryfallBtn.style.marginRight = '0.5rem';
     scryfallBtn.innerHTML = '🔄 Precios Magic';
     scryfallBtn.onclick = window.syncScryfallPrices;
 
+    // Botón Resumen
     const summaryBtn = document.createElement('button');
     summaryBtn.className = 'btn';
     summaryBtn.style.padding = '0.15rem 0.5rem';
@@ -278,6 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
     summaryBtn.innerHTML = '📊 Resumen Anual';
     summaryBtn.onclick = window.showAnnualSummary;
     
+    // Insertamos los dos justo antes del botón de salir
     const logoutBtn = badgesContainer.lastElementChild;
     badgesContainer.insertBefore(scryfallBtn, logoutBtn);
     badgesContainer.insertBefore(summaryBtn, logoutBtn);
@@ -436,7 +447,7 @@ function updateAllUI() {
     renderCollections();
 }
 
-function buildSavingsPanel(monthlyAdd, totalRealSavings, historicalAppSavings) {
+function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
     const financePanel = document.querySelector('.finance-panel');
     let goalDiv = document.getElementById('savings-goal-panel');
     if (!goalDiv) {
@@ -477,7 +488,7 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, historicalAppSavings) {
                 </div>
                 <div style="color:#94a3b8; text-align:right;">
                     Ajustes Extra: <strong style="color:${appData.globalSavings >= 0 ? '#34d399' : '#fb7185'};">${appData.globalSavings > 0 ? '+' : ''}${formatMoney(appData.globalSavings)}</strong><br/>
-                    Ahorro App (Histórico): <strong style="color:white;">+${formatMoney(historicalAppSavings)}</strong>
+                    Ahorro App (Histórico): <strong style="color:white;">+${formatMoney(accumulatedSavings)}</strong>
                 </div>
             </div>
             <div style="color:#34d399; text-align:right; border-top:1px solid #334155; padding-top:0.5rem;">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
@@ -488,31 +499,23 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, historicalAppSavings) {
 function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
     
-    // 1. CÁLCULO DEL DISPONIBLE REAL DEL MES ACTUAL
-    const income = curData.salary || 0;
-    const totalOut = totalFixed + totalVar;
-    const disposable = Math.max(0, income - totalOut);
-
-    // 2. REPARTO DEL DISPONIBLE (SEGÚN SLIDER)
-    const hobbyPercent = curData.allocation / 100;
-    const hobbyBudget = disposable > 0 ? disposable * hobbyPercent : 0;
-    const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
-
-    // 3. CÁLCULO DEL HISTÓRICO (Meses pasados)
-    let historicalAppSavings = 0;
-    Object.keys(appData.monthlyData).forEach(month => {
-        if (month !== appData.currentMonth) { 
-            const md = appData.monthlyData[month];
-            const mFixed = md.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-            const mVar = md.variableExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-            const mDisp = Math.max(0, (md.salary || 0) - mFixed - mVar);
-            const mHobbyPercent = (md.allocation || 30) / 100;
-            historicalAppSavings += (mDisp * (1 - mHobbyPercent));
+    let accumulatedSavings = 0;
+    Object.values(appData.monthlyData).forEach(monthData => {
+        let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+        let mVar = monthData.variableExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+        let mDisp = (monthData.salary || 0) - mFixed - mVar;
+        if (mDisp > 0) {
+            let mHobby = mDisp * ((monthData.allocation || 30) / 100);
+            let mSavings = mDisp - mHobby;
+            accumulatedSavings += mSavings;
         }
     });
 
-    // TOTAL META 10K = Ajustes manuales + Meses pasados + Ahorro mes actual
-    const totalRealSavings = appData.globalSavings + historicalAppSavings + currentMonthSavings;
+    const totalRealSavings = appData.globalSavings + accumulatedSavings;
+
+    const disposable = curData.salary - totalFixed - totalVar;
+    const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
+    const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
     
     let totalCostNeeded = 0; let totalItemsNeeded = 0; let magicRemaining = 0; let isMagicComplete = false;
 
@@ -533,7 +536,7 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-    buildSavingsPanel(currentMonthSavings, totalRealSavings, historicalAppSavings);
+    buildSavingsPanel(currentMonthSavings, totalRealSavings, accumulatedSavings);
 
     if (typeof Chart !== 'undefined') {
         drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
@@ -802,52 +805,10 @@ window.toggleExpand = (id) => {
     }
 }
 
-// --- FUNCIÓN DE CONFETI PARA CELEBRAR COMPRAS ---
-function triggerEpicConfetti() {
-    if (!window.confetti) {
-        const script = document.createElement('script');
-        script.src = "https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js";
-        script.onload = () => fireConfetti();
-        document.head.appendChild(script);
-    } else {
-        fireConfetti();
-    }
-}
-
-function fireConfetti() {
-    const duration = 2500; 
-    const animationEnd = Date.now() + duration;
-    const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 999999 };
-
-    function randomInRange(min, max) { return Math.random() * (max - min) + min; }
-
-    const interval = setInterval(function() {
-        const timeLeft = animationEnd - Date.now();
-        if (timeLeft <= 0) return clearInterval(interval);
-        const particleCount = 50 * (timeLeft / duration);
-        
-        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.1, 0.3), y: Math.random() - 0.2 } }));
-        confetti(Object.assign({}, defaults, { particleCount, origin: { x: randomInRange(0.7, 0.9), y: Math.random() - 0.2 } }));
-    }, 250);
-}
-
 window.toggleItem = (colId, idx) => {
     const col = appData.collections.find(c => c.id === colId);
     if (!col) return;
-    
-    const wasOwned = col.ownedList[idx];
-    col.ownedList[idx] = !wasOwned; 
-
-    if (!wasOwned) {
-        if (col.type === 'cards') {
-            const cardPrice = col.items[idx].price || 0;
-            if (cardPrice >= 3.00) triggerEpicConfetti();
-        } else if (col.type === 'manga') {
-            if (window.confetti) confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, zIndex: 999999 });
-            else triggerEpicConfetti(); 
-        }
-    }
-
+    col.ownedList[idx] = !col.ownedList[idx];
     updateAllUI();
     saveToDynamo();
 }
