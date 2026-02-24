@@ -419,3 +419,67 @@ textarea { width: 100%; height: 200px; background: #0f172a; color: white; border
     pointer-events: none; /* Para que no estorbe al hacer clic */
     border: 2px solid #6366f1;
 }
+
+.finance-row {
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+}
+
+.controls-row {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.kpi-row {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.strategy-row {
+  grid-template-columns: 1.2fr 0.8fr;
+}
+
+.kpi-card {
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(148,163,184,0.15);
+  border-radius: 1rem;
+  padding: 1.2rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.kpi-label {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  text-transform: uppercase;
+  margin-bottom: 0.4rem;
+}
+
+.kpi-value {
+  font-size: 1.6rem;
+  font-weight: bold;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-value.success { color: #34d399; }
+.kpi-value.info { color: #818cf8; }
+
+.mini-progress {
+  height: 8px;
+  background: rgba(148,163,184,0.2);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 0.5rem;
+}
+
+.mini-progress div {
+  height: 100%;
+  background: linear-gradient(90deg, #eab308, #f59e0b);
+  transition: width 0.6s ease;
+}
+
+.chart-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
