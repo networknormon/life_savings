@@ -582,7 +582,7 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     const mDisp = (monthData.salary || 0) - mFixed - mVar;
 
     if (mDisp > 0) {
-      const mHobby = mDisp * ((monthData.allocation || 30) / 100);
+      const mHobby = mDisp * (((monthData.allocation ?? 30)) / 100);
       const mSavings = mDisp - mHobby;
       accumulatedSavings += mSavings;
     }
@@ -757,7 +757,7 @@ window.showAnnualSummary = () => {
 
       const mDisp = (md.salary || 0) - mFixed - mVar;
       if (mDisp > 0) {
-        const alloc = (md.allocation || 30) / 100;
+        const alloc = (md.allocation ?? 30) / 100;
         tHobbies += (mDisp * alloc);
         tSavings += (mDisp - (mDisp * alloc));
       }
