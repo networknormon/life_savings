@@ -901,25 +901,27 @@ document.body.appendChild(previewImg);
 
 window.showCardPreview = (e, imageSrc) => {
   previewImg.src = `MagicFFSet/${imageSrc}`;
-  previewImg.style.display = 'block';
+  previewImg.classList.add('show');
   window.moveCardPreview(e);
 };
 
 window.hideCardPreview = () => {
-  previewImg.style.display = 'none';
-  previewImg.src = '';
+  previewImg.classList.remove('show');
 };
 
 window.moveCardPreview = (e) => {
-  if (previewImg.style.display === 'block') {
-    let x = e.clientX + 20;
-    let y = e.clientY - 125;
-    if (x + 250 > window.innerWidth) x = e.clientX - 270;
-    if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
-    if (y < 10) y = 10;
-    previewImg.style.left = `${x}px`;
-    previewImg.style.top = `${y}px`;
-  }
+  if (!previewImg.classList.contains('show')) return;
+
+  let x = e.clientX + 20;
+  let y = e.clientY - 125;
+
+  // Ajuste cuando se sale de pantalla (mismo comportamiento que ya tenías)
+  if (x + 250 > window.innerWidth) x = e.clientX - 270;
+  if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
+  if (y < 10) y = 10;
+
+  previewImg.style.left = `${x}px`;
+  previewImg.style.top = `${y}px`;
 };
 
 // INIT
