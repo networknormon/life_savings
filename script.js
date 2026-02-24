@@ -8,11 +8,15 @@ chartScript.src = "https://cdn.jsdelivr.net/npm/chart.js";
 chartScript.onload = () => { if (window.ChartLoadedCallback) window.ChartLoadedCallback(); };
 document.head.appendChild(chartScript);
 
-// --- DATOS INICIALES Y HELPERS ---
+// --- HELPERS ---
 function generateOwned(total, ownedCount) {
   return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
 
+const formatMoney = (amount) =>
+  new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
+
+// --- DATOS INICIALES (Magic) ---
 const initialMagicCards = [
   { name: "A Realm Reborn", price: 0.28, image: "A Realm Reborn.jpg" },
   { name: "Absolute Virtue", price: 3.49, image: "Absolute Virtue .jpg" },
@@ -61,15 +65,16 @@ const initialMagicCards = [
   { name: "Yuna, Hope of Spira", price: 2.50, image: "Yuna, la Esperanza de Spira.jpg" }
 ];
 
+// --- FECHA / MES ---
 const today = new Date();
 const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 
 // ======================================================
-// ✅ MODELO ARREGLADO: base (initialSavings) + ajustes (manualAdjustments)
+// ✅ MODELO: base + ajustes + monthlyData
 // ======================================================
 let appData = {
-  initialSavings: 1124.90,     // <-- CAMBIA ESTO si tu base real es otra
-  manualAdjustments: 0,        // <-- lo que sumas/restas con el input + / -
+  initialSavings: 1124.90,     // <-- tu base
+  manualAdjustments: 0,        // <-- ajustes con + / -
   savingsGoal: 10000,
   currentMonth: defaultMonthStr,
 
@@ -126,19 +131,17 @@ function loadDataFromDynamo() {
     }
 
     if (!data.Item) {
-      // No hay datos en la nube todavía
       updateAllUI();
       return;
     }
 
     console.log("Datos cargados desde la nube ☁️");
 
-    // --- Colecciones ---
+    // Colecciones
     if (data.Item.collectionsData) {
       const savedCollections = JSON.parse(data.Item.collectionsData);
       appData.collections.forEach(col => {
         if (savedCollections[col.id]) {
-          // MIGRACIÓN: antiguo (array) o nuevo (obj con ownedList + prices)
           if (Array.isArray(savedCollections[col.id])) {
             col.ownedList = savedCollections[col.id];
           } else {
@@ -153,43 +156,31 @@ function loadDataFromDynamo() {
       });
     }
 
-    // --- Finanzas (MIGRACIÓN COMPATIBLE) ---
+    // Finanzas
     if (data.Item.finances) {
       const dbFin = data.Item.finances;
 
-      // Nuevo formato: initialSavings + manualAdjustments + monthlyData
       if (dbFin.monthlyData) {
         appData.monthlyData = dbFin.monthlyData;
 
-        // Si existe, lo usamos, si no mantenemos lo local (por ejemplo 1124.90)
-        if (dbFin.initialSavings !== undefined) {
-          appData.initialSavings = dbFin.initialSavings;
-        }
+        if (dbFin.initialSavings !== undefined) appData.initialSavings = dbFin.initialSavings;
 
-        // manualAdjustments nuevo; si no existe pero había globalSavings antiguo, lo migramos
         if (dbFin.manualAdjustments !== undefined) {
           appData.manualAdjustments = dbFin.manualAdjustments;
         } else if (dbFin.globalSavings !== undefined) {
-          appData.manualAdjustments = dbFin.globalSavings; // compat
+          appData.manualAdjustments = dbFin.globalSavings; // compat antiguo
         }
 
         if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
-      }
-
-      // Formato viejo MUY viejo: salary / expenses / variableExpenses / allocation
-      else if (dbFin.salary !== undefined) {
-        // Deja tu base intacta; solo montamos el mes
+      } else if (dbFin.salary !== undefined) {
+        // formato viejo
         appData.monthlyData[defaultMonthStr] = {
           salary: dbFin.salary || 1084.20,
           fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: dbFin.expenses || 0 }],
           variableExpenses: [{ id: Date.now() + 1, name: "General Variables", amount: dbFin.variableExpenses || 0 }],
-          allocation: dbFin.allocation || 30
+          allocation: dbFin.allocation ?? 30
         };
-
-        // Si venía el viejo globalSavings, lo interpretamos como ajustes manuales
-        if (dbFin.globalSavings !== undefined) {
-          appData.manualAdjustments = dbFin.globalSavings;
-        }
+        if (dbFin.globalSavings !== undefined) appData.manualAdjustments = dbFin.globalSavings;
       }
     }
 
@@ -258,7 +249,7 @@ function saveToDynamo() {
 }
 
 // ======================================================
-// 🔮 API SCRYFALL: ACTUALIZACIÓN DE PRECIOS EN TIEMPO REAL
+// SCRYFALL
 // ======================================================
 window.syncScryfallPrices = async () => {
   const btn = document.getElementById('scryfall-sync-btn');
@@ -275,8 +266,6 @@ window.syncScryfallPrices = async () => {
 
   for (let i = 0; i < magicCol.items.length; i++) {
     const card = magicCol.items[i];
-
-    // Para cartas dobles, buscamos solo la primera cara
     let searchName = card.name.split(' // ')[0].trim();
 
     try {
@@ -292,8 +281,6 @@ window.syncScryfallPrices = async () => {
 
     updatedCount++;
     btn.innerHTML = `⏳ Leyendo... ${updatedCount}/${magicCol.items.length}`;
-
-    // Scryfall rate limit
     await new Promise(r => setTimeout(r, 120));
   }
 
@@ -308,12 +295,11 @@ window.syncScryfallPrices = async () => {
   }, 3000);
 };
 
-// Insertar Botones en el Menú Superior Dinámicamente
+// Botones top
 document.addEventListener('DOMContentLoaded', () => {
   const badgesContainer = document.querySelector('.badges');
   if (!badgesContainer) return;
 
-  // Botón API Scryfall
   const scryfallBtn = document.createElement('button');
   scryfallBtn.id = 'scryfall-sync-btn';
   scryfallBtn.className = 'btn';
@@ -325,7 +311,6 @@ document.addEventListener('DOMContentLoaded', () => {
   scryfallBtn.innerHTML = '🔄 Precios Magic';
   scryfallBtn.onclick = window.syncScryfallPrices;
 
-  // Botón Resumen
   const summaryBtn = document.createElement('button');
   summaryBtn.className = 'btn';
   summaryBtn.style.padding = '0.15rem 0.5rem';
@@ -341,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ======================================================
-// LÓGICA DE MESES Y GASTOS
+// MESES Y GASTOS
 // ======================================================
 function createNewMonthProfile(monthStr) {
   const months = Object.keys(appData.monthlyData).sort();
@@ -352,7 +337,7 @@ function createNewMonthProfile(monthStr) {
       salary: lastData.salary,
       fixedExpenses: JSON.parse(JSON.stringify(lastData.fixedExpenses)),
       variableExpenses: [],
-      allocation: lastData.allocation
+      allocation: lastData.allocation ?? 30
     };
   } else {
     appData.monthlyData[monthStr] = { salary: 0, fixedExpenses: [], variableExpenses: [], allocation: 30 };
@@ -399,10 +384,19 @@ window.removeExpense = (type, id) => {
   saveToDynamo();
 };
 
-window.updateSalary = (val) => { appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
-window.updateAllocation = (val) => { appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0; updateAllUI(); saveToDynamo(); };
+window.updateSalary = (val) => {
+  appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0;
+  updateAllUI();
+  saveToDynamo();
+};
 
-// ✅ FUNCIÓN PARA AÑADIR/RESTAR AJUSTES MANUALES (NO TOCA LA BASE)
+window.updateAllocation = (val) => {
+  appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0;
+  updateAllUI();
+  saveToDynamo();
+};
+
+// ✅ ajustes manuales (no toca base)
 window.modifySavings = (multiplier) => {
   const input = document.getElementById('savings-modifier');
   if (!input) return;
@@ -417,10 +411,12 @@ window.modifySavings = (multiplier) => {
 
 function renderExpenseLists() {
   const curData = appData.monthlyData[appData.currentMonth];
+
   const renderList = (type, array) => {
     const container = document.getElementById(`${type}-list`);
     let total = 0;
     if (!container) return 0;
+
     container.innerHTML = '';
     array.forEach(item => {
       total += item.amount;
@@ -434,39 +430,26 @@ function renderExpenseLists() {
         </div>
       `;
     });
+
     const totalEl = document.getElementById(`total-${type}-display`);
     if (totalEl) totalEl.innerText = total.toFixed(2);
     return total;
   };
-  return { totalFixed: renderList('fixed', curData.fixedExpenses), totalVar: renderList('variable', curData.variableExpenses) };
+
+  return {
+    totalFixed: renderList('fixed', curData.fixedExpenses),
+    totalVar: renderList('variable', curData.variableExpenses)
+  };
 }
 
 // ======================================================
-// RENDERIZADO VISUAL Y GRÁFICOS
+// CHART
 // ======================================================
-const formatMoney = (amount) => new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount);
-
 let mainChart = null;
+
 function drawDonutChart(fixed, variable, savings, hobbies) {
-  const stratBox = document.querySelector('.strategy-box');
-  if (!stratBox) return;
-
-  stratBox.style.flexWrap = 'wrap';
-  stratBox.style.justifyContent = 'space-between';
-
-  let chartContainer = document.getElementById('chart-container');
-  if (!chartContainer) {
-    chartContainer = document.createElement('div');
-    chartContainer.id = 'chart-container';
-    chartContainer.style.width = '220px';
-    chartContainer.style.height = '220px';
-    chartContainer.style.margin = '0 auto';
-    chartContainer.innerHTML = '<canvas id="financeChart"></canvas>';
-    stratBox.appendChild(chartContainer);
-  }
-
-  const ctx = document.getElementById('financeChart');
-  if (!ctx) return;
+  const canvas = document.getElementById('financeChart');
+  if (!canvas || typeof Chart === 'undefined') return;
 
   const dataObj = {
     labels: ['Fijos', 'Variables', 'Ahorro', 'Vicios'],
@@ -482,7 +465,7 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
     mainChart.data = dataObj;
     mainChart.update();
   } else {
-    mainChart = new Chart(ctx, {
+    mainChart = new Chart(canvas, {
       type: 'doughnut',
       data: dataObj,
       options: {
@@ -496,6 +479,9 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
   }
 }
 
+// ======================================================
+// UI PRINCIPAL
+// ======================================================
 function updateAllUI() {
   const monthSel = document.getElementById('month-selector');
   const salaryEl = document.getElementById('salary');
@@ -512,69 +498,10 @@ function updateAllUI() {
   renderCollections();
 }
 
-function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
-  const financePanel = document.querySelector('.finance-panel');
-  if (!financePanel) return;
-
-  let goalDiv = document.getElementById('savings-goal-panel');
-  if (!goalDiv) {
-    goalDiv = document.createElement('div');
-    goalDiv.id = 'savings-goal-panel';
-    goalDiv.className = 'card';
-    goalDiv.style.gridColumn = "1 / -1";
-    goalDiv.style.background = "linear-gradient(to right, #1e293b, #0f172a)";
-    goalDiv.style.border = "1px solid #eab308";
-    const strat = document.querySelector('.strategy-box');
-    financePanel.insertBefore(goalDiv, strat);
-  }
-
-  const progressPercent = Math.max(0, Math.min((totalRealSavings / appData.savingsGoal) * 100, 100));
-  const manual = appData.manualAdjustments || 0;
-  const base = appData.initialSavings || 0;
-
-  goalDiv.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:1rem;">
-      <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
-        🏆 META 10K <span style="font-size:0.8rem; color:#94a3b8; font-weight:normal">(Ahorro Total)</span>
-      </div>
-      <div style="text-align:right">
-        <span style="font-size:1.2rem; font-weight:bold; color:white">${formatMoney(totalRealSavings)}</span>
-        <span style="color:#64748b"> / €10,000</span>
-      </div>
-    </div>
-
-    <div style="height:1.5rem; background:#334155; border-radius:999px; overflow:hidden; position:relative;">
-      <div style="height:100%; width:${progressPercent}%; background:linear-gradient(90deg, #eab308, #f59e0b); transition:width 1s;"></div>
-      <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; color:white; text-shadow:0 1px 2px black;">${progressPercent.toFixed(1)}%</div>
-    </div>
-
-    <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
-      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-        <div style="display:flex; align-items:center; gap:0.5rem;">
-          <span style="color:#94a3b8;" title="Añade o resta dinero extra (ej. ventas, regalos o imprevistos)">Ajuste Manual:</span>
-          <div style="display:flex; align-items:center; gap: 0.25rem;">
-            <input type="number" id="savings-modifier" placeholder="€" style="background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.25rem 0.5rem; color:white; font-weight:bold; width:70px; outline:none;">
-            <button class="btn" style="padding:0.25rem 0.5rem; background:rgba(16, 185, 129, 0.2); color:#34d399; border:1px solid #10b981; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="modifySavings(1)">+ Añadir</button>
-            <button class="btn" style="padding:0.25rem 0.5rem; background:rgba(244, 63, 94, 0.2); color:#fb7185; border:1px solid #f43f5e; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="modifySavings(-1)">- Restar</button>
-          </div>
-        </div>
-
-        <div style="color:#94a3b8; text-align:right;">
-          Ahorro inicial: <strong style="color:white;">${formatMoney(base)}</strong><br/>
-          Ajustes manuales: <strong style="color:${manual >= 0 ? '#34d399' : '#fb7185'};">${manual > 0 ? '+' : ''}${formatMoney(manual)}</strong><br/>
-          Ahorro App (Histórico): <strong style="color:white;">+${formatMoney(accumulatedSavings)}</strong>
-        </div>
-      </div>
-
-      <div style="color:#34d399; text-align:right; border-top:1px solid #334155; padding-top:0.5rem;">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
-    </div>
-  `;
-}
-
 function calculateFinances(totalFixed = 0, totalVar = 0) {
   const curData = appData.monthlyData[appData.currentMonth];
 
-  // Ahorro histórico generado por la app (por meses)
+  // Histórico app (suma ahorros de todos los meses)
   let accumulatedSavings = 0;
   Object.values(appData.monthlyData).forEach(monthData => {
     const mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
@@ -582,19 +509,23 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     const mDisp = (monthData.salary || 0) - mFixed - mVar;
 
     if (mDisp > 0) {
-      const mHobby = mDisp * (((monthData.allocation ?? 30)) / 100);
+      // ✅ IMPORTANTE: respeta 0% (usa ??)
+      const allocPct = (monthData.allocation ?? 30) / 100;
+      const mHobby = mDisp * allocPct;
       const mSavings = mDisp - mHobby;
       accumulatedSavings += mSavings;
     }
   });
 
-  // ✅ Total real = Base + Ajustes + Histórico app
-  const totalRealSavings = (appData.initialSavings || 0) + (appData.manualAdjustments || 0) + accumulatedSavings;
+  // Total real
+  const base = appData.initialSavings || 0;
+  const manual = appData.manualAdjustments || 0;
+  const totalRealSavings = base + manual + accumulatedSavings;
 
   // Mes actual
-  const disposable = curData.salary - totalFixed - totalVar;
-  const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
-  const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0;
+  const disposable = (curData.salary || 0) - totalFixed - totalVar;
+  const hobbyBudget = disposable > 0 ? disposable * ((curData.allocation ?? 30) / 100) : 0;
+  const currentMonthSavings = disposable > 0 ? (disposable - hobbyBudget) : 0;
 
   // Costes pendientes colecciones
   let totalCostNeeded = 0;
@@ -606,7 +537,10 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     if (col.type === 'cards') {
       const missingCards = col.items.filter((_, i) => !col.ownedList[i]);
       const cost = missingCards.reduce((acc, item) => acc + item.price, 0);
-      if (col.id === 1) { magicRemaining += cost; isMagicComplete = missingCards.length === 0; }
+      if (col.id === 1) {
+        magicRemaining = cost;
+        isMagicComplete = missingCards.length === 0;
+      }
       totalCostNeeded += cost;
       totalItemsNeeded += missingCards.length;
     } else {
@@ -619,20 +553,61 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     }
   });
 
-  // Estrategia de reparto
+  // Estrategia
   const magicPiggyBank = isMagicComplete ? 0 : hobbyBudget * 0.60;
   const spendingMoney = hobbyBudget - magicPiggyBank;
   const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-  buildSavingsPanel(currentMonthSavings, totalRealSavings, accumulatedSavings);
+  // ===== KPIs =====
+  const kTotal = document.getElementById('kpi-total');
+  const kBase = document.getElementById('kpi-base');
+  const kApp = document.getElementById('kpi-app');
+  const kManual = document.getElementById('kpi-manual');
+  const kMonth = document.getElementById('kpi-month');
+  const kMonthMini = document.getElementById('kpi-month-mini');
+  const kHobby = document.getElementById('kpi-hobby');
+  const kMagicPiggy = document.getElementById('kpi-magic-piggy');
+  const kSpending = document.getElementById('kpi-spending');
+  const kProgBar = document.getElementById('kpi-progress-bar');
+  const kProgTxt = document.getElementById('kpi-progress-text');
 
+  if (kTotal) kTotal.innerText = formatMoney(totalRealSavings);
+  if (kBase) kBase.innerText = formatMoney(base);
+  if (kApp) kApp.innerText = formatMoney(accumulatedSavings);
+  if (kManual) kManual.innerText = `${manual > 0 ? '+' : ''}${formatMoney(manual)}`;
+  if (kMonth) kMonth.innerText = formatMoney(currentMonthSavings);
+  if (kMonthMini) kMonthMini.innerText = `+${formatMoney(currentMonthSavings)}`;
+  if (kHobby) kHobby.innerText = formatMoney(hobbyBudget);
+  if (kMagicPiggy) kMagicPiggy.innerText = formatMoney(magicPiggyBank);
+  if (kSpending) kSpending.innerText = formatMoney(spendingMoney);
+
+  const progressPercent = Math.max(0, Math.min((totalRealSavings / appData.savingsGoal) * 100, 100));
+  if (kProgBar) kProgBar.style.width = `${progressPercent}%`;
+  if (kProgTxt) kProgTxt.innerText = `${progressPercent.toFixed(1)}%`;
+
+  // ===== Donut =====
   if (typeof Chart !== 'undefined') {
     drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
   } else {
     window.ChartLoadedCallback = () => drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
   }
 
-  // Recomendaciones compra (mangas, excluye Magic id=1)
+  // ===== Plan text =====
+  const hobbyEl = document.getElementById('hobby-budget');
+  const saveSug = document.getElementById('savings-suggestion');
+  const spendEl = document.getElementById('spending-money');
+  const magicEl = document.getElementById('magic-cost');
+  const monthsEl = document.getElementById('months-to-finish');
+  const missEl = document.getElementById('global-missing-count');
+
+  if (hobbyEl) hobbyEl.innerText = formatMoney(hobbyBudget);
+  if (saveSug) saveSug.innerText = formatMoney(magicPiggyBank);
+  if (spendEl) spendEl.innerText = formatMoney(spendingMoney);
+  if (magicEl) magicEl.innerText = formatMoney(magicRemaining);
+  if (monthsEl) monthsEl.innerText = months < 900 ? months : "∞";
+  if (missEl) missEl.innerText = `Faltan ${totalItemsNeeded} items`;
+
+  // ===== Recomendaciones mangas =====
   let recommendations = [];
   let tempBudget = spendingMoney;
 
@@ -665,37 +640,11 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
         break;
       }
     }
-
     if (!boughtSomething) break;
   }
 
-  // UI updates
-  const hobbyEl = document.getElementById('hobby-budget');
-  const saveSug = document.getElementById('savings-suggestion');
-  const spendEl = document.getElementById('spending-money');
-  const magicEl = document.getElementById('magic-cost');
-  const monthsEl = document.getElementById('months-to-finish');
-  const missEl = document.getElementById('global-missing-count');
-
-  if (hobbyEl) hobbyEl.innerText = formatMoney(hobbyBudget);
-  if (saveSug) saveSug.innerText = formatMoney(magicPiggyBank);
-  if (spendEl) spendEl.innerText = formatMoney(spendingMoney);
-  if (magicEl) magicEl.innerText = formatMoney(magicRemaining);
-  if (monthsEl) monthsEl.innerText = months < 900 ? months : "∞";
-  if (missEl) missEl.innerText = `Faltan ${totalItemsNeeded} items`;
-
-  const stratText = document.querySelector('.strategy-text');
-  if (!stratText) return;
-
-  let detailsDiv = document.getElementById('plan-details');
-  if (!detailsDiv) {
-    detailsDiv = document.createElement('div');
-    detailsDiv.id = 'plan-details';
-    detailsDiv.style.marginTop = "1rem";
-    detailsDiv.style.paddingTop = "1rem";
-    detailsDiv.style.borderTop = "1px solid rgba(255,255,255,0.1)";
-    stratText.appendChild(detailsDiv);
-  }
+  const detailsDiv = document.getElementById('plan-details');
+  if (!detailsDiv) return;
 
   let planHTML = '';
   if (isMagicComplete && recommendations.length === 0 && totalItemsNeeded === 0) {
@@ -704,10 +653,10 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     planHTML += `<h4 style="font-size:0.75rem; text-transform:uppercase; color:#94a3b8; margin-bottom:0.5rem; letter-spacing:1px">Lista de Compra Prioritaria:</h4>`;
 
     if (recommendations.length > 0) {
-      planHTML += `<ul style="list-style:none; font-size:0.9rem; padding:0;">`;
+      planHTML += `<ul style="list-style:none; font-size:0.9rem; padding:0; margin:0;">`;
       recommendations.forEach(rec => {
         planHTML += `
-          <li style="margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.05); padding:0.5rem; border-radius:0.5rem;">
+          <li style="margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.05); padding:0.5rem; border-radius:0.75rem;">
             <span style="font-size:1.2rem">${rec.icon}</span>
             <div>
               <div style="font-weight:bold; color:#fff">${rec.name}</div>
@@ -727,7 +676,7 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
 
     if (!isMagicComplete) {
       planHTML += `
-        <div style="margin-top:0.75rem; font-size:0.85rem; background:rgba(16, 185, 129, 0.1); padding:0.5rem; border-radius:0.5rem; border:1px solid rgba(16, 185, 129, 0.2)">
+        <div style="margin-top:0.75rem; font-size:0.85rem; background:rgba(16, 185, 129, 0.1); padding:0.6rem; border-radius:0.75rem; border:1px solid rgba(16, 185, 129, 0.2)">
           🔮 Para Magic: Guarda <strong style="color:#34d399">${formatMoney(magicPiggyBank)}</strong>
         </div>
       `;
@@ -757,6 +706,7 @@ window.showAnnualSummary = () => {
 
       const mDisp = (md.salary || 0) - mFixed - mVar;
       if (mDisp > 0) {
+        // ✅ respeta 0% con ??
         const alloc = (md.allocation ?? 30) / 100;
         tHobbies += (mDisp * alloc);
         tSavings += (mDisp - (mDisp * alloc));
@@ -790,7 +740,7 @@ window.showAnnualSummary = () => {
 };
 
 // ======================================================
-// RENDER COLECCIONES
+// COLECCIONES
 // ======================================================
 function renderCollections() {
   const container = document.getElementById('collections-container');
@@ -833,7 +783,7 @@ function renderCollections() {
           </div>
         </div>
         <div class="progress-container">
-          <div class="progress-bar" style="width: ${progress}%; background-color: ${isCompleted ? '#10b981' : '#6366f1'}"></div>
+          <div class="progress-bar" style="width:${progress}%; background-color:${isCompleted ? '#10b981' : '#6366f1'}"></div>
         </div>
         <div class="controls">
           <span class="col-meta-count">${ownedCount} / ${totalCount} items</span>
@@ -865,21 +815,17 @@ function renderCollections() {
               onmouseenter="showCardPreview(event, this.getAttribute('data-img'))"
               onmouseleave="hideCardPreview()"
               onmousemove="moveCardPreview(event)">
-
               <div style="position:relative; width:45px; height:63px; border-radius:4px; overflow:hidden; border:1px solid #334155; flex-shrink:0; pointer-events:none;">
                 <img src="MagicFFSet/${item.image}" alt="${item.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
                 <div style="display:none; width:100%; height:100%; background:#334155; align-items:center; justify-content:center; font-size:0.8rem; color:#94a3b8;">?</div>
               </div>
-
               <div style="flex:1; overflow:hidden; pointer-events:none;">
                 <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${item.name}">${item.name}</div>
                 <div style="font-size:0.75rem; color:#94a3b8">${formatMoney(item.price)}</div>
               </div>
-
               <div class="check-box" style="pointer-events:none;">${isOwned ? '✔' : ''}</div>
             </div>
           `;
-
           itemEl.onclick = () => toggleItem(col.id, idx);
           listGrid.appendChild(itemEl);
         });
@@ -947,7 +893,7 @@ window.toggleItem = (colId, idx) => {
 };
 
 // ======================================================
-// SISTEMA DE ZOOM GLOBAL DE CARTAS
+// ZOOM CARTAS
 // ======================================================
 const previewImg = document.createElement('img');
 previewImg.id = 'global-card-preview';
@@ -976,5 +922,5 @@ window.moveCardPreview = (e) => {
   }
 };
 
-// INIT ARRANQUE BÁSICO
+// INIT
 updateAllUI();
