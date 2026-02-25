@@ -138,7 +138,7 @@ function loadDataFromDynamo() {
                     appData.monthlyData = dbFin.monthlyData;
                     if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
                 } else if (dbFin.salary !== undefined) {
-                    appData.globalSavings = 2100;
+                    appData.globalSavings = dbFin.globalSavings || 0; // CORREGIDA LA INCONGRUENCIA DEL 2100
                     appData.monthlyData[defaultMonthStr] = {
                         salary: dbFin.salary || 1084.20,
                         fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: dbFin.expenses || 0 }],
@@ -254,11 +254,12 @@ window.syncScryfallPrices = async () => {
     saveToDynamo();  // Guardamos los nuevos precios
     updateAllUI();   // Refrescamos toda la web
 
+    // CORRECCIÓN BUG TIMEOUT: Ahora espera al final del loop
     setTimeout(() => {
         btn.innerHTML = '🔄 Precios Magic';
         btn.disabled = false;
         btn.style.opacity = '1';
-    }, 3000);
+    }, 2000);
 };
 
 // Insertar Botones en el Menú Superior Dinámicamente
@@ -349,13 +350,11 @@ window.removeExpense = (type, id) => {
 window.updateSalary = (val) => { appData.monthlyData[appData.currentMonth].salary = parseFloat(val) || 0; updateAllUI(); saveToDynamo(); };
 window.updateAllocation = (val) => { appData.monthlyData[appData.currentMonth].allocation = parseInt(val) || 0; updateAllUI(); saveToDynamo(); };
 
-// FUNCIÓN PARA AÑADIR/RESTAR AL AHORRO TOTAL
-window.modifySavings = (multiplier) => {
-    const input = document.getElementById('savings-modifier');
-    const val = parseFloat(input.value);
-    if (!isNaN(val) && val > 0) {
-        appData.globalSavings += (val * multiplier);
-        input.value = ''; 
+// NUEVO: FUNCIÓN PARA ESTABLECER EL AHORRO EXACTO MANUALMENTE
+window.setExactSavings = (val) => {
+    const num = parseFloat(val);
+    if (!isNaN(num)) {
+        appData.globalSavings = num;
         updateAllUI();
         saveToDynamo();
     }
@@ -446,7 +445,7 @@ function updateAllUI() {
     renderCollections();
 }
 
-function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
+function buildSavingsPanel(monthlyAdd, totalRealSavings) {
     const financePanel = document.querySelector('.finance-panel');
     let goalDiv = document.getElementById('savings-goal-panel');
     if (!goalDiv) {
@@ -478,19 +477,17 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
         <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
                 <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <span style="color:#94a3b8;" title="Añade o resta dinero extra (ej. ventas, regalos o imprevistos)">Ajuste Manual:</span>
+                    <span style="color:#94a3b8;" title="Introduce tu ahorro total real">Ahorro Real (Manual):</span>
                     <div style="display:flex; align-items:center; gap: 0.25rem;">
-                        <input type="number" id="savings-modifier" placeholder="€" style="background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.25rem 0.5rem; color:white; font-weight:bold; width:70px; outline:none;">
-                        <button class="btn" style="padding:0.25rem 0.5rem; background:rgba(16, 185, 129, 0.2); color:#34d399; border:1px solid #10b981; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="modifySavings(1)">+ Añadir</button>
-                        <button class="btn" style="padding:0.25rem 0.5rem; background:rgba(244, 63, 94, 0.2); color:#fb7185; border:1px solid #f43f5e; border-radius:4px; font-weight:bold; cursor:pointer;" onclick="modifySavings(-1)">- Restar</button>
+                        <input type="number" id="savings-modifier" value="${totalRealSavings.toFixed(2)}" onchange="setExactSavings(this.value)" style="background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.25rem 0.5rem; color:white; font-weight:bold; width:90px; outline:none;">
+                        <span style="color:#94a3b8">€</span>
                     </div>
                 </div>
-                <div style="color:#94a3b8; text-align:right;">
-                    Ajustes Extra: <strong style="color:${appData.globalSavings >= 0 ? '#34d399' : '#fb7185'};">${appData.globalSavings > 0 ? '+' : ''}${formatMoney(appData.globalSavings)}</strong><br/>
-                    Ahorro App (Histórico): <strong style="color:white;">+${formatMoney(accumulatedSavings)}</strong>
+                <div style="color:#34d399; text-align:right;">
+                    Este mes sobran: <strong>+${formatMoney(monthlyAdd)}</strong><br>
+                    <span style="font-size:0.75rem; color:#94a3b8;">(Súmalo a la izquierda si no lo gastas)</span>
                 </div>
             </div>
-            <div style="color:#34d399; text-align:right; border-top:1px solid #334155; padding-top:0.5rem;">Este mes sumas: <strong>+${formatMoney(monthlyAdd)}</strong></div>
         </div>
     `;
 }
@@ -498,22 +495,12 @@ function buildSavingsPanel(monthlyAdd, totalRealSavings, accumulatedSavings) {
 function calculateFinances(totalFixed = 0, totalVar = 0) {
     const curData = appData.monthlyData[appData.currentMonth];
     
-    let accumulatedSavings = 0;
-    Object.values(appData.monthlyData).forEach(monthData => {
-        let mFixed = monthData.fixedExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-        let mVar = monthData.variableExpenses.reduce((sum, exp) => sum + exp.amount, 0);
-        let mDisp = (monthData.salary || 0) - mFixed - mVar;
-        if (mDisp > 0) {
-            let mHobby = mDisp * ((monthData.allocation || 30) / 100);
-            let mSavings = mDisp - mHobby;
-            accumulatedSavings += mSavings;
-        }
-    });
-
-    const totalRealSavings = appData.globalSavings + accumulatedSavings;
+    // El ahorro real ahora es ÚNICAMENTE el global (100% manual)
+    const totalRealSavings = appData.globalSavings;
 
     const disposable = curData.salary - totalFixed - totalVar;
     const hobbyBudget = disposable > 0 ? disposable * (curData.allocation / 100) : 0;
+    // Esto es lo que "debería" sobrar este mes, te lo mostraremos solo como sugerencia
     const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
     
     let totalCostNeeded = 0; let totalItemsNeeded = 0; let magicRemaining = 0; let isMagicComplete = false;
@@ -535,7 +522,7 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
 
-    buildSavingsPanel(currentMonthSavings, totalRealSavings, accumulatedSavings);
+    buildSavingsPanel(currentMonthSavings, totalRealSavings);
 
     if (typeof Chart !== 'undefined') {
         drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
@@ -653,6 +640,7 @@ window.showAnnualSummary = () => {
         document.body.appendChild(modal);
     }
     
+    // CORRECCIÓN Wording Ahorro App por Ahorro Teórico
     modal.innerHTML = `
         <div class="modal-content" style="max-width:400px; text-align:center;">
             <h2 style="color:var(--primary); margin-bottom:1rem;">📊 Resumen del Año ${year}</h2>
@@ -662,7 +650,7 @@ window.showAnnualSummary = () => {
                 <div>Gastos Variables Totales: <strong style="color:var(--danger); float:right;">${formatMoney(tVar)}</strong></div>
                 <hr style="border-color:#334155; margin:1rem 0;">
                 <div>Presupuesto Vicios Generado: <strong style="color:#818cf8; float:right;">${formatMoney(tHobbies)}</strong></div>
-                <div style="font-size:1.1rem; margin-top:0.5rem;">Ahorro App Generado: <strong style="color:var(--success); float:right;">${formatMoney(tSavings)}</strong></div>
+                <div style="font-size:1.1rem; margin-top:0.5rem;" title="Esto es lo que debería haber sobrado en base a tus ingresos y gastos registrados.">Ahorro Teórico Generado: <strong style="color:var(--success); float:right;">${formatMoney(tSavings)}</strong></div>
             </div>
             <button class="btn btn-primary" style="margin-top:1.5rem; width:100%; padding:0.75rem; font-weight:bold;" onclick="document.getElementById('annual-modal').style.display='none'">Cerrar Resumen</button>
         </div>
