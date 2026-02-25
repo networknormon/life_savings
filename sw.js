@@ -3,5 +3,4 @@ self.addEventListener('install', (e) => {
 });
 
 self.addEventListener('fetch', (e) => {
-    // No bloqueamos nada, dejamos que la web funcione con normalidad
 });
