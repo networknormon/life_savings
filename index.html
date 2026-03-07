@@ -24,100 +24,61 @@
         }
 
         if (!idToken) {
-            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+            window.location.href = 'login.html';
         }
         
         function logout() {
             localStorage.removeItem('cognito_id_token');
-            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+            window.location.href = 'login.html';
         }
     </script>
 </head>
 <body>
-
     <header>
         <div class="container header-content">
-            <div class="logo">
-                <span class="icon">📚</span>
-                <h1>Gestor de Colecciones</h1>
-            </div>
-            <div class="badges">
-                <span class="badge success">Objetivo: 5 Colecciones</span>
-                <span class="badge warning" id="global-missing-count">Calculando...</span>
-                <button onclick="logout()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--danger); color: var(--danger);">Salir</button>
-            </div>
+            <div class="logo">🗃️ MyTracker</div>
+            <nav>
+                <select id="month-selector" onchange="changeMonth()">
+                    <option value="Enero">Enero</option>
+                    <option value="Febrero">Febrero</option>
+                    <option value="Marzo">Marzo</option>
+                    <option value="Abril">Abril</option>
+                    <option value="Mayo">Mayo</option>
+                    <option value="Junio">Junio</option>
+                    <option value="Julio">Julio</option>
+                    <option value="Agosto">Agosto</option>
+                    <option value="Septiembre">Septiembre</option>
+                    <option value="Octubre">Octubre</option>
+                    <option value="Noviembre">Noviembre</option>
+                    <option value="Diciembre">Diciembre</option>
+                </select>
+                <button onclick="logout()" class="btn btn-outline">Salir</button>
+            </nav>
         </div>
     </header>
 
     <main class="container">
-        
-        <section class="finance-panel">
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); padding: 1rem; border-radius: 1rem; border: 1px solid #334155;">
-                <h2 style="font-size: 1.1rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">📅 Finanzas del Mes</h2>
-                <input type="month" id="month-selector" onchange="changeMonth(this.value)" class="btn" style="background: #0f172a; color: white; border: 1px solid #334155; padding: 0.5rem;">
+        <section class="dashboard">
+            <div class="card-stats">
+                <div class="stat-item">
+                    <label>Sueldo</label>
+                    <div class="val" id="val-salary">€0</div>
+                </div>
+                <div class="stat-item">
+                    <label>Ahorro</label>
+                    <div class="val text-green" id="val-savings">€0</div>
+                </div>
+                <div class="stat-item">
+                    <label>Gastos Fijos</label>
+                    <div class="val text-red" id="val-fixed">€0</div>
+                </div>
             </div>
 
-            <div class="inputs-grid">
-                
-                <div class="card input-card">
-                    <label>Ingresos Mensuales</label>
-                    <div class="input-wrapper">
-                        <span>€</span>
-                        <input type="number" id="salary" onchange="updateSalary(this.value)">
-                    </div>
-                </div>
-
-                <div class="card input-card" style="display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <label style="margin:0;">Gastos Fijos</label>
-                        <button class="btn" onclick="togglePanel('fixed-panel')" style="padding: 0.1rem 0.5rem; font-size: 0.7rem;">Editar ▼</button>
-                    </div>
-                    <div class="input-wrapper minus">
-                        <span>€</span>
-                        <span id="total-fixed-display" style="font-size: 1.5rem; font-weight: 700; color: white;">0.00</span>
-                    </div>
-                    <div id="fixed-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
-                        <div id="fixed-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div style="display: flex; gap: 0.5rem;">
-                                <input type="text" id="new-fixed-name" placeholder="Ej. Internet" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
-                                <input type="number" id="new-fixed-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
-                            </div>
-                            <button class="btn btn-primary" onclick="addExpense('fixed')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Fijo</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card input-card" style="display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <label style="margin:0;">Gastos Variables</label>
-                        <button class="btn" onclick="togglePanel('variable-panel')" style="padding: 0.1rem 0.5rem; font-size: 0.7rem;">Editar ▼</button>
-                    </div>
-                    <div class="input-wrapper minus">
-                        <span>€</span>
-                        <span id="total-variable-display" style="font-size: 1.5rem; font-weight: 700; color: white;">0.00</span>
-                    </div>
-                    <div id="variable-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
-                        <div id="variable-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div style="display: flex; gap: 0.5rem;">
-                                <input type="text" id="new-variable-name" placeholder="Ej. Comida" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
-                                <input type="number" id="new-variable-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
-                            </div>
-                            <button class="btn btn-primary" onclick="addExpense('variable')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Variable</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card slider-card">
-                    <div class="slider-header">
-                        <label>Inversión Mensual</label>
-                        <span id="allocation-display">30%</span>
-                    </div>
-                    <input type="range" id="allocation" min="0" max="100" value="30" onchange="updateAllocation(this.value)">
+            <div class="chart-container">
+                <canvas id="budgetChart"></canvas>
+                <div class="hobby-info">
+                    <div class="hobby-title">Ocio Restante</div>
+                    <div class="hobby-value" id="val-hobby">€0.00</div>
                     <div class="slider-footer">
                         Disponible: <span id="hobby-budget">€0.00</span>
                     </div>
@@ -140,20 +101,18 @@
 
         <div id="collections-container" class="collections-grid"></div>
 
+        <section class="binder-section">
+            <div class="binder-header">
+                <h2>🗂️ Virtual Binder (Master Set)</h2>
+                <div id="wishlist-badge" class="badge">Wishlist: 0 cartas</div>
+            </div>
+            <div id="virtual-binder" class="binder-grid">
+                </div>
+        </section>
+
     </main>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
-    
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
-                    .then(reg => console.log('Service Worker registrado', reg))
-                    .catch(err => console.log('Fallo al registrar Service Worker', err));
-            });
-        }
-    </script>
-    
     <script src="script.js"></script>
 </body>
 </html>
