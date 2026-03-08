@@ -109,6 +109,7 @@ const mtgViewerState = {
 
 const MTG_MIN_SCALE = 1;
 const MTG_MAX_SCALE = 3.5;
+const pulledMangaBooks = new Set();
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -905,31 +906,48 @@ function renderCollections() {
                 mangaGrid.className = 'manga-grid bookshelf-grid';
                 col.ownedList.forEach((isOwned, idx) => {
                     const cover = document.createElement('div');
-                    cover.className = `manga-cover ${col.theme} ${isOwned ? 'owned' : ''}`;
+                    const pulledKey = `${col.id}-${idx}`;
+                    cover.className = `manga-cover shelf-book ${col.theme} ${isOwned ? 'owned' : ''} ${pulledMangaBooks.has(pulledKey) ? 'is-pulled' : ''}`;
+                    cover.onclick = () => previewMangaBook(col.id, idx);
                     
                     if (col.folder && col.ext) {
                         const imgPath = `${col.folder}/${idx + 1}.${col.ext}`;
                         cover.innerHTML = `
-                            <img src="${imgPath}" alt="Vol ${idx + 1}" loading="lazy" decoding="async" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-                            <div style="display:none; width:100%; height:100%; flex-direction:column; background:#1e293b; align-items:center; justify-content:center; color:#94a3b8;">
-                                <span style="font-size:2rem; font-weight:bold">${idx + 1}</span>
+                            <div class="book-spine">
+                                <span class="book-spine-title">${escapeHtml(col.name)}</span>
+                                <span class="book-spine-number">${idx + 1}</span>
                             </div>
-                            <div class="owned-overlay">✔</div>
+                            <div class="book-face">
+                                <img src="${imgPath}" alt="Vol ${idx + 1}" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                                <div class="book-fallback">
+                                    <span>${idx + 1}</span>
+                                </div>
+                            </div>
+                            <button type="button" class="book-own-btn ${isOwned ? 'is-owned' : ''}" onclick="toggleMangaOwned(${col.id}, ${idx}, event)" aria-label="${isOwned ? 'Marcar pendiente' : 'Marcar comprado'} volumen ${idx + 1}">
+                                ${isOwned ? '✓' : '+'}
+                            </button>
                         `;
                     } else {
                         cover.innerHTML = `
-                            <div class="cover-art">
-                                <div class="spine-top">${col.publisher}</div>
-                                <div class="spine-main">
-                                    <span class="cover-title-vertical">${col.name}</span>
-                                    <span class="cover-number">${idx + 1}</span>
-                                </div>
-                                <div class="spine-bottom">★</div>
+                            <div class="book-spine">
+                                <span class="book-spine-title">${escapeHtml(col.name)}</span>
+                                <span class="book-spine-number">${idx + 1}</span>
                             </div>
-                            <div class="owned-overlay">✔</div>
+                            <div class="book-face">
+                                <div class="cover-art">
+                                    <div class="spine-top">${col.publisher}</div>
+                                    <div class="spine-main">
+                                        <span class="cover-title-vertical">${col.name}</span>
+                                        <span class="cover-number">${idx + 1}</span>
+                                    </div>
+                                    <div class="spine-bottom">★</div>
+                                </div>
+                            </div>
+                            <button type="button" class="book-own-btn ${isOwned ? 'is-owned' : ''}" onclick="toggleMangaOwned(${col.id}, ${idx}, event)" aria-label="${isOwned ? 'Marcar pendiente' : 'Marcar comprado'} volumen ${idx + 1}">
+                                ${isOwned ? '✓' : '+'}
+                            </button>
                         `;
                     }
-                    cover.onclick = () => toggleItem(col.id, idx);
                     mangaGrid.appendChild(cover);
                 });
                 bodyDiv.appendChild(mangaGrid);
@@ -957,6 +975,21 @@ window.toggleItem = (colId, idx) => {
     renderMtgViewer();
     saveToDynamo();
 }
+
+window.toggleMangaOwned = (colId, idx, ev) => {
+    if (ev) ev.stopPropagation();
+    toggleItem(colId, idx);
+};
+
+window.previewMangaBook = (colId, idx) => {
+    const key = `${colId}-${idx}`;
+    pulledMangaBooks.add(key);
+    renderCollections();
+    setTimeout(() => {
+        pulledMangaBooks.delete(key);
+        renderCollections();
+    }, 1300);
+};
 
 function ensureMtgViewer() {
     if (document.getElementById('mtg-viewer-modal')) return;
