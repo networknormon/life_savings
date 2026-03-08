@@ -115,6 +115,7 @@ const mangaViewerState = {
 };
 let mangaPullTimeout = null;
 let activePulledBookEl = null;
+let bookTransitionTimeout = null;
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -133,6 +134,59 @@ function syncBodyScrollLock() {
     const mtgOpen = mtgModal && !mtgModal.classList.contains('hidden');
     const mangaOpen = mangaModal && !mangaModal.classList.contains('hidden');
     document.body.style.overflow = (mtgOpen || mangaOpen) ? 'hidden' : '';
+}
+
+function ensureBookTransitionLayer() {
+    if (document.getElementById('book-transition-layer')) return;
+    const layer = document.createElement('div');
+    layer.id = 'book-transition-layer';
+    layer.className = 'book-transition-layer hidden';
+    layer.innerHTML = `
+        <div class="book-transition-stage">
+            <div class="book-transition-shell">
+                <div class="book-half book-half-left"></div>
+                <div class="book-half book-half-right"></div>
+                <img class="book-transition-cover" alt="">
+            </div>
+        </div>
+    `;
+    document.body.appendChild(layer);
+}
+
+function playBookOpenTransition(bookEl, coverSrc, onDone) {
+    ensureBookTransitionLayer();
+    const layer = document.getElementById('book-transition-layer');
+    const cover = layer.querySelector('.book-transition-cover');
+    const rect = bookEl.getBoundingClientRect();
+    const targetW = Math.min(window.innerWidth * 0.42, 300);
+    const targetH = targetW * 1.5;
+    const targetX = (window.innerWidth - targetW) / 2;
+    const targetY = Math.max((window.innerHeight - targetH) / 2, 36);
+
+    layer.style.setProperty('--from-x', `${rect.left}px`);
+    layer.style.setProperty('--from-y', `${rect.top}px`);
+    layer.style.setProperty('--from-w', `${rect.width}px`);
+    layer.style.setProperty('--from-h', `${rect.height}px`);
+    layer.style.setProperty('--to-x', `${targetX}px`);
+    layer.style.setProperty('--to-y', `${targetY}px`);
+    layer.style.setProperty('--to-w', `${targetW}px`);
+    layer.style.setProperty('--to-h', `${targetH}px`);
+    cover.src = coverSrc || '';
+
+    layer.classList.remove('hidden', 'is-grow', 'is-open');
+    void layer.offsetWidth;
+    layer.classList.add('is-grow');
+
+    if (bookTransitionTimeout) clearTimeout(bookTransitionTimeout);
+    bookTransitionTimeout = setTimeout(() => {
+        layer.classList.add('is-open');
+    }, 420);
+
+    setTimeout(() => {
+        if (onDone) onDone();
+        layer.classList.add('hidden');
+        layer.classList.remove('is-grow', 'is-open');
+    }, 980);
 }
 
 function applyMtgTransform() {
@@ -1000,13 +1054,15 @@ window.previewMangaBook = (colId, idx, ev) => {
         activePulledBookEl.classList.remove('is-pulled');
     }
     activePulledBookEl = clickedBook;
-    clickedBook.classList.remove('is-pulled');
-    void clickedBook.offsetWidth;
-    clickedBook.classList.add('is-pulled');
+    const col = appData.collections.find(c => c.id === colId);
+    if (!col || col.type !== 'manga') return;
+    const coverSrc = getMangaCoverSrc(col, idx);
 
     mangaPullTimeout = setTimeout(() => {
-        window.openMangaViewer(colId, idx);
-    }, 430);
+        playBookOpenTransition(clickedBook, coverSrc, () => {
+            window.openMangaViewer(colId, idx);
+        });
+    }, 40);
 };
 
 function ensureMangaViewer() {
