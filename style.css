@@ -140,6 +140,7 @@ img {
     align-items: center;
     gap: 0.5rem;
     flex-wrap: wrap;
+    justify-content: flex-end;
 }
 
 .badge {
@@ -158,6 +159,22 @@ img {
 .badge.warning {
     background: rgba(255, 180, 84, 0.15);
     color: #ffcc86;
+}
+
+.badge.info {
+    background: rgba(43, 127, 255, 0.16);
+    color: #9cc9ff;
+}
+
+.badge.neutral {
+    background: rgba(157, 176, 193, 0.14);
+    color: #d4dee7;
+}
+
+.header-action-slot {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
 }
 
 .app-shell {
@@ -861,6 +878,10 @@ textarea {
     align-items: center;
     justify-content: center;
     padding: 1rem;
+}
+
+.mtg-modal.hidden {
+    display: none;
 }
 
 .mtg-modal-content {

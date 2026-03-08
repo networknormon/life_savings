@@ -311,7 +311,7 @@ window.syncScryfallPrices = async () => {
 
 // Insertar Botones en el Menú Superior Dinámicamente
 document.addEventListener('DOMContentLoaded', () => {
-    const badgesContainer = document.querySelector('.badges');
+    const actionSlot = document.getElementById('header-action-slot');
     
     // Botón API Scryfall
     const scryfallBtn = document.createElement('button');
@@ -331,10 +331,9 @@ document.addEventListener('DOMContentLoaded', () => {
     summaryBtn.onclick = window.showAnnualSummary;
     
     // Insertamos los dos justo antes del botón de salir
-    if (badgesContainer) {
-        const logoutBtn = badgesContainer.lastElementChild;
-        badgesContainer.insertBefore(scryfallBtn, logoutBtn);
-        badgesContainer.insertBefore(summaryBtn, logoutBtn);
+    if (actionSlot) {
+        actionSlot.appendChild(scryfallBtn);
+        actionSlot.appendChild(summaryBtn);
     }
 
     const enterAddBindings = [
@@ -588,7 +587,11 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     // Esto es lo que "debería" sobrar este mes, te lo mostraremos solo como sugerencia
     const currentMonthSavings = disposable > 0 ? disposable - hobbyBudget : 0; 
     
-    let totalCostNeeded = 0; let totalItemsNeeded = 0; let magicRemaining = 0; let isMagicComplete = false;
+    let totalCostNeeded = 0;
+    let totalItemsNeeded = 0;
+    let magicRemaining = 0;
+    let isMagicComplete = false;
+    let completedCollections = 0;
 
     appData.collections.forEach(col => {
         if (col.type === 'cards') {
@@ -596,10 +599,12 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
             const cost = missingCards.reduce((acc, item) => acc + item.price, 0);
             if (col.id === 1) { magicRemaining += cost; isMagicComplete = missingCards.length === 0; }
             totalCostNeeded += cost; totalItemsNeeded += missingCards.length;
+            if (missingCards.length === 0) completedCollections++;
         } else {
             const owned = col.ownedList.filter(Boolean).length;
             const remaining = col.totalItems - owned;
             if (remaining > 0) { totalCostNeeded += (remaining * col.pricePerItem); totalItemsNeeded += remaining; }
+            if (remaining === 0) completedCollections++;
         }
     });
 
@@ -650,6 +655,9 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     document.getElementById('quick-expenses').innerText = formatMoney(totalFixed + totalVar);
     document.getElementById('quick-savings').innerText = formatMoney(currentMonthSavings);
     document.getElementById('quick-hobby').innerText = formatMoney(hobbyBudget);
+    document.getElementById('header-goal-progress').innerText = `Objetivo: ${completedCollections}/${appData.collections.length}`;
+    document.getElementById('header-magic-remaining').innerText = `Magic: ${formatMoney(magicRemaining)}`;
+    document.getElementById('header-month-budget').innerText = `Hobby mes: ${formatMoney(hobbyBudget)}`;
     document.getElementById('savings-suggestion').innerText = formatMoney(magicPiggyBank);
     document.getElementById('spending-money').innerText = formatMoney(spendingMoney);
     document.getElementById('magic-cost').innerText = formatMoney(magicRemaining);
@@ -919,9 +927,11 @@ function ensureMtgViewer() {
             </div>
         </div>
     `;
-    modal.addEventListener('click', (ev) => {
+    const modalContent = modal.querySelector('.mtg-modal-content');
+    modal.addEventListener('pointerdown', (ev) => {
         if (ev.target === modal) closeMtgViewer();
     });
+    modalContent.addEventListener('pointerdown', (ev) => ev.stopPropagation());
     document.body.appendChild(modal);
 
     document.getElementById('mtg-close-btn').onclick = closeMtgViewer;
