@@ -9,6 +9,15 @@ function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
 }
 
+function escapeHtml(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#039;');
+}
+
 const initialMagicCards = [
     { name: "A Realm Reborn", price: 0.28, image: "A Realm Reborn.jpg" },
     { name: "Absolute Virtue", price: 3.49, image: "Absolute Virtue .jpg" },
@@ -74,12 +83,60 @@ let appData = {
     },
     collections: [
         { id: 1, name: "Magic: FF Master Set", publisher: "Wizards", type: "cards", items: initialMagicCards, ownedList: Array(45).fill(false), expanded: false, theme: "purple", icon: "🔮", priority: 3 },
-        { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 }
-        // { id: 3, name: "Vinland Saga", publisher: "Planeta", type: "manga", totalItems: 29, ownedList: generateOwned(29, 3), pricePerItem: 12.30, expanded: false, theme: "col-theme-blue", icon: "🛡️", folder: "VinlandSaga", ext: "webp", priority: 1 },
-        // { id: 4, name: "Dragon Ball Ultimate", publisher: "Planeta", type: "manga", totalItems: 34, ownedList: generateOwned(34, 7), pricePerItem: 8.60, expanded: false, theme: "col-theme-yellow", icon: "🐉", folder: "DragonBall", ext: "webp", priority: 2 },
-        // { id: 5, name: "Slam Dunk", publisher: "Ivrea", tyme: "manga", totalItems: 20, ownedList: generateOwned(20,1), pricePerItem: 14.25, expanded: false, theme: "col-theme-orange", icon: "🏀⛹🏻‍♂️", folder: "SlamDunk", ext: "webp", priority: 3 }
+        { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 },
+        { id: 3, name: "Vinland Saga", publisher: "Planeta", type: "manga", totalItems: 29, ownedList: generateOwned(29, 3), pricePerItem: 12.30, expanded: false, theme: "col-theme-blue", icon: "🛡️", folder: "VinlandSaga", ext: "webp", priority: 1 },
+        { id: 4, name: "Dragon Ball Ultimate", publisher: "Planeta", type: "manga", totalItems: 34, ownedList: generateOwned(34, 7), pricePerItem: 8.60, expanded: false, theme: "col-theme-yellow", icon: "🐉", folder: "DragonBall", ext: "webp", priority: 2 },
+        { id: 5, name: "Slam Dunk", publisher: "Ivrea", type: "manga", totalItems: 20, ownedList: generateOwned(20,1), pricePerItem: 14.25, expanded: false, theme: "col-theme-orange", icon: "🏀⛹🏻‍♂️", folder: "SlamDunk", ext: "webp", priority: 3 }
     ]
 };
+
+const mtgViewerState = {
+    collectionId: null,
+    index: 0,
+    scale: 1,
+    translateX: 0,
+    translateY: 0,
+    dragging: false,
+    lastDragPoint: null,
+    pointers: new Map(),
+    pinchStartDistance: 0,
+    pinchStartScale: 1,
+    touchSwipeStart: null
+};
+
+const MTG_MIN_SCALE = 1;
+const MTG_MAX_SCALE = 3.5;
+
+function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function getPointerDistance(points) {
+    if (points.length < 2) return 0;
+    const dx = points[0].x - points[1].x;
+    const dy = points[0].y - points[1].y;
+    return Math.hypot(dx, dy);
+}
+
+function applyMtgTransform() {
+    const imageEl = document.getElementById('mtg-viewer-image');
+    if (!imageEl) return;
+    imageEl.style.transform = `translate(${mtgViewerState.translateX}px, ${mtgViewerState.translateY}px) scale(${mtgViewerState.scale})`;
+    imageEl.style.cursor = mtgViewerState.scale > 1 ? (mtgViewerState.dragging ? 'grabbing' : 'grab') : 'zoom-in';
+}
+
+function resetMtgZoom() {
+    mtgViewerState.scale = 1;
+    mtgViewerState.translateX = 0;
+    mtgViewerState.translateY = 0;
+    mtgViewerState.dragging = false;
+    mtgViewerState.lastDragPoint = null;
+    mtgViewerState.pointers.clear();
+    mtgViewerState.pinchStartDistance = 0;
+    mtgViewerState.pinchStartScale = 1;
+    mtgViewerState.touchSwipeStart = null;
+    applyMtgTransform();
+}
 
 // --- CONFIGURACIÓN DE AWS DYNAMODB ---
 const REGION = 'eu-north-1';
@@ -158,20 +215,9 @@ function showSaveNotification() {
     if(!toast) {
         toast = document.createElement('div');
         toast.id = 'save-toast';
-        toast.innerHTML = '☁️ Guardado en la nube';
-        toast.style.position = 'fixed';
-        toast.style.bottom = '20px';
-        toast.style.right = '20px';
-        toast.style.background = '#10b981';
-        toast.style.color = 'white';
-        toast.style.padding = '0.5rem 1rem';
-        toast.style.borderRadius = '999px';
-        toast.style.fontSize = '0.85rem';
-        toast.style.fontWeight = 'bold';
-        toast.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
-        toast.style.zIndex = '999999';
-        toast.style.opacity = '0';
-        toast.style.transition = 'opacity 0.3s';
+        toast.role = 'status';
+        toast.ariaLive = 'polite';
+        toast.textContent = '☁️ Guardado en la nube';
         document.body.appendChild(toast);
     }
     toast.style.opacity = '1';
@@ -270,29 +316,44 @@ document.addEventListener('DOMContentLoaded', () => {
     // Botón API Scryfall
     const scryfallBtn = document.createElement('button');
     scryfallBtn.id = 'scryfall-sync-btn';
-    scryfallBtn.className = 'btn';
-    scryfallBtn.style.padding = '0.15rem 0.5rem';
-    scryfallBtn.style.fontSize = '0.75rem';
-    scryfallBtn.style.borderColor = '#8b5cf6'; // Morado Magic
-    scryfallBtn.style.color = '#8b5cf6';
-    scryfallBtn.style.marginRight = '0.5rem';
+    scryfallBtn.type = 'button';
+    scryfallBtn.className = 'btn btn-sm';
+    scryfallBtn.style.borderColor = '#6ba9ff';
+    scryfallBtn.style.color = '#8fc2ff';
     scryfallBtn.innerHTML = '🔄 Precios Magic';
     scryfallBtn.onclick = window.syncScryfallPrices;
 
     // Botón Resumen
     const summaryBtn = document.createElement('button');
-    summaryBtn.className = 'btn';
-    summaryBtn.style.padding = '0.15rem 0.5rem';
-    summaryBtn.style.fontSize = '0.75rem';
-    summaryBtn.style.borderColor = 'var(--primary)';
-    summaryBtn.style.color = 'var(--primary)';
+    summaryBtn.type = 'button';
+    summaryBtn.className = 'btn btn-sm';
     summaryBtn.innerHTML = '📊 Resumen Anual';
     summaryBtn.onclick = window.showAnnualSummary;
     
     // Insertamos los dos justo antes del botón de salir
-    const logoutBtn = badgesContainer.lastElementChild;
-    badgesContainer.insertBefore(scryfallBtn, logoutBtn);
-    badgesContainer.insertBefore(summaryBtn, logoutBtn);
+    if (badgesContainer) {
+        const logoutBtn = badgesContainer.lastElementChild;
+        badgesContainer.insertBefore(scryfallBtn, logoutBtn);
+        badgesContainer.insertBefore(summaryBtn, logoutBtn);
+    }
+
+    const enterAddBindings = [
+        { id: 'new-fixed-name', type: 'fixed' },
+        { id: 'new-fixed-amount', type: 'fixed' },
+        { id: 'new-variable-name', type: 'variable' },
+        { id: 'new-variable-amount', type: 'variable' }
+    ];
+
+    enterAddBindings.forEach(binding => {
+        const el = document.getElementById(binding.id);
+        if (!el) return;
+        el.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                addExpense(binding.type);
+            }
+        });
+    });
 });
 
 
@@ -324,15 +385,21 @@ window.changeMonth = (newMonth) => {
     updateAllUI();
 };
 
-window.togglePanel = (panelId) => {
+window.togglePanel = (panelId, btn = null) => {
     const el = document.getElementById(panelId);
-    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+    if (!el) return;
+    const isOpen = getComputedStyle(el).display !== 'none';
+    el.style.display = isOpen ? 'none' : 'block';
+    if (btn) {
+        btn.setAttribute('aria-expanded', String(!isOpen));
+        btn.textContent = isOpen ? 'Editar' : 'Cerrar';
+    }
 };
 
 window.addExpense = (type) => {
     const nameInput = document.getElementById(`new-${type}-name`);
     const amountInput = document.getElementById(`new-${type}-amount`);
-    const name = nameInput.value.trim();
+    const name = nameInput.value.trim().slice(0, 60);
     const amount = parseFloat(amountInput.value);
     
     if (name && amount > 0) {
@@ -369,15 +436,32 @@ function renderExpenseLists() {
         container.innerHTML = '';
         array.forEach(item => {
             total += item.amount;
-            container.innerHTML += `
-                <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.05); padding:0.4rem 0.5rem; border-radius:4px; font-size:0.85rem;">
-                   <span style="color:#f8fafc; font-weight:500;">${item.name}</span>
-                   <div style="display:flex; align-items:center;">
-                       <span style="color:#94a3b8; margin-right:10px;">${formatMoney(item.amount)}</span>
-                       <button onclick="removeExpense('${type}', ${item.id})" style="background:transparent; border:none; color:var(--danger); cursor:pointer; font-weight:bold; font-size:1rem; padding:0 0.2rem;">×</button>
-                   </div>
-                </div>
-            `;
+            const row = document.createElement('div');
+            row.className = 'expense-item';
+
+            const name = document.createElement('span');
+            name.className = 'expense-item-name';
+            name.textContent = item.name;
+
+            const meta = document.createElement('div');
+            meta.className = 'expense-item-meta';
+
+            const price = document.createElement('span');
+            price.className = 'expense-item-price';
+            price.textContent = formatMoney(item.amount);
+
+            const removeBtn = document.createElement('button');
+            removeBtn.type = 'button';
+            removeBtn.className = 'btn-icon-danger';
+            removeBtn.textContent = '×';
+            removeBtn.ariaLabel = `Eliminar gasto ${item.name}`;
+            removeBtn.onclick = () => removeExpense(type, item.id);
+
+            meta.appendChild(price);
+            meta.appendChild(removeBtn);
+            row.appendChild(name);
+            row.appendChild(meta);
+            container.appendChild(row);
         });
         document.getElementById(`total-${type}-display`).innerText = total.toFixed(2);
         return total;
@@ -412,7 +496,7 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
         labels: ['Fijos', 'Variables', 'Ahorro', 'Vicios'],
         datasets: [{
             data: [fixed, variable, savings, hobbies],
-            backgroundColor: ['#f43f5e', '#f59e0b', '#10b981', '#6366f1'],
+            backgroundColor: ['#ff5f6d', '#ffb454', '#20c997', '#2b7fff'],
             borderWidth: 0,
             hoverOffset: 4
         }]
@@ -562,6 +646,10 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     }
 
     document.getElementById('hobby-budget').innerText = formatMoney(hobbyBudget);
+    document.getElementById('quick-income').innerText = formatMoney(curData.salary || 0);
+    document.getElementById('quick-expenses').innerText = formatMoney(totalFixed + totalVar);
+    document.getElementById('quick-savings').innerText = formatMoney(currentMonthSavings);
+    document.getElementById('quick-hobby').innerText = formatMoney(hobbyBudget);
     document.getElementById('savings-suggestion').innerText = formatMoney(magicPiggyBank);
     document.getElementById('spending-money').innerText = formatMoney(spendingMoney);
     document.getElementById('magic-cost').innerText = formatMoney(magicRemaining);
@@ -724,20 +812,24 @@ function renderCollections() {
                     const itemEl = document.createElement('div');
                     itemEl.className = `item-row ${isOwned ? 'owned' : ''}`;
                     itemEl.innerHTML = `
-                        <div style="display:flex; align-items:center; gap:1rem; width:100%; cursor:zoom-in;"
-                             data-img="${item.image.replace(/"/g, '&quot;')}"
-                             onmouseenter="showCardPreview(event, this.getAttribute('data-img'))" 
-                             onmouseleave="hideCardPreview()"
-                             onmousemove="moveCardPreview(event)">
-                            <div style="position:relative; width:45px; height:63px; border-radius:4px; overflow:hidden; border:1px solid #334155; flex-shrink:0; pointer-events:none;">
-                                <img src="MagicFFSet/${item.image}" alt="${item.name}" style="width:100%; height:100%; object-fit:cover;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-                                <div style="display:none; width:100%; height:100%; background:#334155; align-items:center; justify-content:center; font-size:0.8rem; color:#94a3b8;">?</div>
+                        <div class="item-main">
+                            <button
+                                type="button"
+                                class="mtg-thumb-btn"
+                                onclick="openMtgViewer(${col.id}, ${idx}, event)"
+                                aria-label="Abrir visor de ${escapeHtml(item.name)}"
+                            >
+                                <img src="MagicFFSet/${item.image}" alt="${escapeHtml(item.name)}" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid'">
+                                <span class="mtg-thumb-fallback">?</span>
+                            </button>
+                            <div class="item-copy">
+                                <div class="item-title" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+                                <div class="item-price">${formatMoney(item.price)}</div>
                             </div>
-                            <div style="flex:1; overflow:hidden; pointer-events:none;">
-                                <div style="font-weight:600; font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis" title="${item.name}">${item.name}</div>
-                                <div style="font-size:0.75rem; color:#94a3b8">${formatMoney(item.price)}</div>
-                            </div>
-                            <div class="check-box" style="pointer-events:none;">${isOwned ? '✔' : ''}</div>
+                        </div>
+                        <div class="item-actions">
+                            <button type="button" class="btn btn-sm" onclick="openMtgViewer(${col.id}, ${idx}, event)">Ver</button>
+                            <div class="check-box">${isOwned ? '✔' : ''}</div>
                         </div>
                     `;
                     itemEl.onclick = () => toggleItem(col.id, idx);
@@ -754,7 +846,7 @@ function renderCollections() {
                     if (col.folder && col.ext) {
                         const imgPath = `${col.folder}/${idx + 1}.${col.ext}`;
                         cover.innerHTML = `
-                            <img src="${imgPath}" alt="Vol ${idx + 1}" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
+                            <img src="${imgPath}" alt="Vol ${idx + 1}" loading="lazy" decoding="async" style="width:100%; height:100%; object-fit:cover; display:block;" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
                             <div style="display:none; width:100%; height:100%; flex-direction:column; background:#1e293b; align-items:center; justify-content:center; color:#94a3b8;">
                                 <span style="font-size:2rem; font-weight:bold">${idx + 1}</span>
                             </div>
@@ -798,36 +890,219 @@ window.toggleItem = (colId, idx) => {
     if (!col) return;
     col.ownedList[idx] = !col.ownedList[idx];
     updateAllUI();
+    renderMtgViewer();
     saveToDynamo();
 }
 
-// --- SISTEMA DE ZOOM GLOBAL DE CARTAS ---
-const previewImg = document.createElement('img');
-previewImg.id = 'global-card-preview';
-document.body.appendChild(previewImg);
+function ensureMtgViewer() {
+    if (document.getElementById('mtg-viewer-modal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'mtg-viewer-modal';
+    modal.className = 'mtg-modal hidden';
+    modal.innerHTML = `
+        <div class="mtg-modal-content" role="dialog" aria-modal="true" aria-labelledby="mtg-viewer-title">
+            <button type="button" class="mtg-close-btn" id="mtg-close-btn" aria-label="Cerrar visor">✕</button>
+            <div class="mtg-modal-layout">
+                <div class="mtg-image-wrap">
+                    <img id="mtg-viewer-image" class="mtg-viewer-image" alt="">
+                </div>
+                <div class="mtg-side">
+                    <h3 id="mtg-viewer-title">Carta</h3>
+                    <p id="mtg-viewer-price" class="mtg-viewer-price">€0.00</p>
+                    <p id="mtg-viewer-index" class="mtg-viewer-index">1 / 1</p>
+                    <div class="mtg-viewer-controls">
+                        <button type="button" class="btn" id="mtg-prev-btn">← Anterior</button>
+                        <button type="button" class="btn" id="mtg-next-btn">Siguiente →</button>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="mtg-owned-toggle-btn">Marcar como comprada</button>
+                </div>
+            </div>
+        </div>
+    `;
+    modal.addEventListener('click', (ev) => {
+        if (ev.target === modal) closeMtgViewer();
+    });
+    document.body.appendChild(modal);
 
-window.showCardPreview = (e, imageSrc) => {
-    previewImg.src = `MagicFFSet/${imageSrc}`;
-    previewImg.style.display = 'block';
-    window.moveCardPreview(e);
+    document.getElementById('mtg-close-btn').onclick = closeMtgViewer;
+    document.getElementById('mtg-prev-btn').onclick = () => moveMtgViewer(-1);
+    document.getElementById('mtg-next-btn').onclick = () => moveMtgViewer(1);
+    document.getElementById('mtg-owned-toggle-btn').onclick = () => {
+        const col = appData.collections.find(c => c.id === mtgViewerState.collectionId);
+        if (!col) return;
+        toggleItem(mtgViewerState.collectionId, mtgViewerState.index);
+    };
+
+    const imageWrap = modal.querySelector('.mtg-image-wrap');
+    const imageEl = document.getElementById('mtg-viewer-image');
+
+    imageWrap.addEventListener('wheel', (ev) => {
+        ev.preventDefault();
+        const factor = ev.deltaY < 0 ? 1.12 : 0.9;
+        mtgViewerState.scale = clamp(mtgViewerState.scale * factor, MTG_MIN_SCALE, MTG_MAX_SCALE);
+        if (mtgViewerState.scale === 1) {
+            mtgViewerState.translateX = 0;
+            mtgViewerState.translateY = 0;
+        }
+        applyMtgTransform();
+    }, { passive: false });
+
+    imageWrap.addEventListener('dblclick', (ev) => {
+        ev.preventDefault();
+        if (mtgViewerState.scale > 1) {
+            resetMtgZoom();
+        } else {
+            mtgViewerState.scale = 2;
+            applyMtgTransform();
+        }
+    });
+
+    imageEl.addEventListener('pointerdown', (ev) => {
+        imageEl.setPointerCapture(ev.pointerId);
+        mtgViewerState.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, pointerType: ev.pointerType });
+
+        if (ev.pointerType === 'touch' && mtgViewerState.scale === 1 && mtgViewerState.pointers.size === 1) {
+            mtgViewerState.touchSwipeStart = { x: ev.clientX, y: ev.clientY, t: Date.now() };
+        }
+
+        if (mtgViewerState.scale > 1 && mtgViewerState.pointers.size === 1) {
+            mtgViewerState.dragging = true;
+            mtgViewerState.lastDragPoint = { x: ev.clientX, y: ev.clientY };
+            applyMtgTransform();
+        }
+    });
+
+    imageEl.addEventListener('pointermove', (ev) => {
+        if (!mtgViewerState.pointers.has(ev.pointerId)) return;
+        mtgViewerState.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, pointerType: ev.pointerType });
+
+        const points = [...mtgViewerState.pointers.values()];
+        if (points.length >= 2) {
+            const dist = getPointerDistance(points);
+            if (!mtgViewerState.pinchStartDistance) {
+                mtgViewerState.pinchStartDistance = dist;
+                mtgViewerState.pinchStartScale = mtgViewerState.scale;
+            } else if (dist > 0) {
+                mtgViewerState.scale = clamp((dist / mtgViewerState.pinchStartDistance) * mtgViewerState.pinchStartScale, MTG_MIN_SCALE, MTG_MAX_SCALE);
+                if (mtgViewerState.scale === 1) {
+                    mtgViewerState.translateX = 0;
+                    mtgViewerState.translateY = 0;
+                }
+                applyMtgTransform();
+            }
+            return;
+        }
+
+        if (mtgViewerState.dragging && mtgViewerState.scale > 1 && mtgViewerState.lastDragPoint) {
+            const dx = ev.clientX - mtgViewerState.lastDragPoint.x;
+            const dy = ev.clientY - mtgViewerState.lastDragPoint.y;
+            mtgViewerState.translateX += dx;
+            mtgViewerState.translateY += dy;
+            mtgViewerState.lastDragPoint = { x: ev.clientX, y: ev.clientY };
+            applyMtgTransform();
+        }
+    });
+
+    const pointerEnd = (ev) => {
+        mtgViewerState.pointers.delete(ev.pointerId);
+        if (mtgViewerState.pointers.size < 2) {
+            mtgViewerState.pinchStartDistance = 0;
+            mtgViewerState.pinchStartScale = mtgViewerState.scale;
+        }
+        if (mtgViewerState.pointers.size === 0) {
+            mtgViewerState.dragging = false;
+            mtgViewerState.lastDragPoint = null;
+            applyMtgTransform();
+
+            if (ev.pointerType === 'touch' && mtgViewerState.touchSwipeStart && mtgViewerState.scale === 1) {
+                const dx = ev.clientX - mtgViewerState.touchSwipeStart.x;
+                const dy = ev.clientY - mtgViewerState.touchSwipeStart.y;
+                const dt = Date.now() - mtgViewerState.touchSwipeStart.t;
+                if (dt < 450 && Math.abs(dx) > 50 && Math.abs(dy) < 40) {
+                    moveMtgViewer(dx < 0 ? 1 : -1);
+                }
+            }
+            mtgViewerState.touchSwipeStart = null;
+        }
+    };
+
+    imageEl.addEventListener('pointerup', pointerEnd);
+    imageEl.addEventListener('pointercancel', pointerEnd);
+}
+
+function preloadNearbyCards(collection, index) {
+    const nextIdx = (index + 1) % collection.items.length;
+    const prevIdx = (index - 1 + collection.items.length) % collection.items.length;
+    [nextIdx, prevIdx].forEach((cardIdx) => {
+        const image = new Image();
+        image.src = `MagicFFSet/${collection.items[cardIdx].image}`;
+    });
+}
+
+function renderMtgViewer() {
+    const modal = document.getElementById('mtg-viewer-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    const collection = appData.collections.find(c => c.id === mtgViewerState.collectionId);
+    if (!collection || collection.type !== 'cards') return;
+
+    const item = collection.items[mtgViewerState.index];
+    if (!item) return;
+
+    const owned = Boolean(collection.ownedList[mtgViewerState.index]);
+    const imageEl = document.getElementById('mtg-viewer-image');
+    const titleEl = document.getElementById('mtg-viewer-title');
+    const priceEl = document.getElementById('mtg-viewer-price');
+    const indexEl = document.getElementById('mtg-viewer-index');
+    const ownedBtn = document.getElementById('mtg-owned-toggle-btn');
+
+    imageEl.src = `MagicFFSet/${item.image}`;
+    imageEl.alt = item.name;
+    titleEl.textContent = item.name;
+    priceEl.textContent = formatMoney(item.price);
+    indexEl.textContent = `${mtgViewerState.index + 1} / ${collection.items.length}`;
+    ownedBtn.textContent = owned ? 'Marcar como pendiente' : 'Marcar como comprada';
+    ownedBtn.classList.toggle('btn-danger', owned);
+    ownedBtn.classList.toggle('btn-primary', !owned);
+
+    preloadNearbyCards(collection, mtgViewerState.index);
+}
+
+window.openMtgViewer = (collectionId, index, ev) => {
+    if (ev) ev.stopPropagation();
+    ensureMtgViewer();
+    mtgViewerState.collectionId = collectionId;
+    mtgViewerState.index = index;
+    const modal = document.getElementById('mtg-viewer-modal');
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    resetMtgZoom();
+    renderMtgViewer();
 };
 
-window.hideCardPreview = () => {
-    previewImg.style.display = 'none';
-    previewImg.src = '';
+window.closeMtgViewer = () => {
+    const modal = document.getElementById('mtg-viewer-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    document.body.style.overflow = '';
+    resetMtgZoom();
 };
 
-window.moveCardPreview = (e) => {
-    if (previewImg.style.display === 'block') {
-        let x = e.clientX + 20; 
-        let y = e.clientY - 125; 
-        if (x + 250 > window.innerWidth) x = e.clientX - 270;
-        if (y + 350 > window.innerHeight) y = window.innerHeight - 360;
-        if (y < 10) y = 10;
-        previewImg.style.left = `${x}px`;
-        previewImg.style.top = `${y}px`;
-    }
-};
+window.moveMtgViewer = (step) => {
+    const collection = appData.collections.find(c => c.id === mtgViewerState.collectionId);
+    if (!collection || collection.type !== 'cards') return;
+    mtgViewerState.index = (mtgViewerState.index + step + collection.items.length) % collection.items.length;
+    resetMtgZoom();
+    renderMtgViewer();
+}
+
+document.addEventListener('keydown', (ev) => {
+    const modal = document.getElementById('mtg-viewer-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    if (ev.key === 'Escape') closeMtgViewer();
+    if (ev.key === 'ArrowRight') moveMtgViewer(1);
+    if (ev.key === 'ArrowLeft') moveMtgViewer(-1);
+});
 
 // INIT ARRANQUE BÁSICO
 updateAllUI();

@@ -3,15 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestor de Colecciones & Finanzas</title>
+    <title>Gestor de Colecciones y Finanzas</title>
+    <meta name="description" content="Gestiona tus colecciones, gastos e inversión mensual en una sola vista.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    
+
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#0f172a">
+    <meta name="theme-color" content="#0d2b45">
     <link rel="apple-touch-icon" href="icon-192.png">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    
+
     <script>
         const hash = window.location.hash;
         let idToken = localStorage.getItem('cognito_id_token');
@@ -26,7 +30,7 @@
         if (!idToken) {
             window.location.href = 'https://networknormon.github.io/life_savings/login.html';
         }
-        
+
         function logout() {
             localStorage.removeItem('cognito_id_token');
             window.location.href = 'https://networknormon.github.io/life_savings/login.html';
@@ -34,87 +38,106 @@
     </script>
 </head>
 <body>
+    <div class="bg-orb bg-orb-a" aria-hidden="true"></div>
+    <div class="bg-orb bg-orb-b" aria-hidden="true"></div>
 
-    <header>
+    <header class="topbar">
         <div class="container header-content">
             <div class="logo">
-                <span class="icon">📚</span>
-                <h1>Gestor de Colecciones</h1>
+                <span class="icon" aria-hidden="true">📚</span>
+                <div>
+                    <h1>Gestor de Colecciones</h1>
+                    <p class="subtitle">Finanzas claras para comprar mejor</p>
+                </div>
             </div>
-            <div class="badges">
+            <div class="badges" aria-label="estado general">
                 <span class="badge success">Objetivo: 5 Colecciones</span>
-                <span class="badge warning" id="global-missing-count">Calculando...</span>
-                <button onclick="logout()" class="btn" style="padding: 0.15rem 0.5rem; font-size: 0.75rem; border-color: var(--danger); color: var(--danger);">Salir</button>
+                <span class="badge warning" id="global-missing-count" aria-live="polite">Calculando...</span>
+                <button type="button" onclick="logout()" class="btn btn-danger btn-sm">Salir</button>
             </div>
         </div>
     </header>
 
-    <main class="container">
-        
-        <section class="finance-panel">
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; background: var(--bg-card); padding: 1rem; border-radius: 1rem; border: 1px solid #334155;">
-                <h2 style="font-size: 1.1rem; color: var(--primary); display: flex; align-items: center; gap: 0.5rem;">📅 Finanzas del Mes</h2>
-                <input type="month" id="month-selector" onchange="changeMonth(this.value)" class="btn" style="background: #0f172a; color: white; border: 1px solid #334155; padding: 0.5rem;">
+    <main class="container app-shell">
+        <section class="quick-stats" aria-label="resumen rápido">
+            <article class="stat-card">
+                <p>Ingresos del mes</p>
+                <strong id="quick-income">€0.00</strong>
+            </article>
+            <article class="stat-card">
+                <p>Gasto total</p>
+                <strong id="quick-expenses">€0.00</strong>
+            </article>
+            <article class="stat-card">
+                <p>Ahorro sugerido</p>
+                <strong id="quick-savings">€0.00</strong>
+            </article>
+            <article class="stat-card">
+                <p>Presupuesto hobby</p>
+                <strong id="quick-hobby">€0.00</strong>
+            </article>
+        </section>
+
+        <section class="finance-panel" aria-label="panel financiero">
+            <div class="finance-toolbar card">
+                <h2>📅 Finanzas del Mes</h2>
+                <input type="month" id="month-selector" onchange="changeMonth(this.value)" class="month-input" aria-label="Seleccionar mes">
             </div>
 
             <div class="inputs-grid">
-                
                 <div class="card input-card">
-                    <label>Ingresos Mensuales</label>
+                    <label for="salary">Ingresos Mensuales</label>
                     <div class="input-wrapper">
-                        <span>€</span>
-                        <input type="number" id="salary" onchange="updateSalary(this.value)">
+                        <span aria-hidden="true">€</span>
+                        <input type="number" id="salary" min="0" step="0.01" onchange="updateSalary(this.value)">
                     </div>
                 </div>
 
-                <div class="card input-card" style="display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <label style="margin:0;">Gastos Fijos</label>
-                        <button class="btn" onclick="togglePanel('fixed-panel')" style="padding: 0.1rem 0.5rem; font-size: 0.7rem;">Editar ▼</button>
+                <div class="card input-card expense-card">
+                    <div class="card-title-row">
+                        <label class="no-margin">Gastos Fijos</label>
+                        <button type="button" class="btn btn-sm" onclick="togglePanel('fixed-panel', this)" aria-expanded="false">Editar</button>
                     </div>
                     <div class="input-wrapper minus">
-                        <span>€</span>
-                        <span id="total-fixed-display" style="font-size: 1.5rem; font-weight: 700; color: white;">0.00</span>
+                        <span aria-hidden="true">€</span>
+                        <span id="total-fixed-display" class="total-value">0.00</span>
                     </div>
-                    <div id="fixed-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
-                        <div id="fixed-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div style="display: flex; gap: 0.5rem;">
-                                <input type="text" id="new-fixed-name" placeholder="Ej. Internet" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
-                                <input type="number" id="new-fixed-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                    <div id="fixed-panel" class="panel-editor">
+                        <div id="fixed-list" class="expense-list" role="list"></div>
+                        <div class="editor-controls">
+                            <div class="editor-row">
+                                <input type="text" id="new-fixed-name" placeholder="Ej. Internet" autocomplete="off">
+                                <input type="number" id="new-fixed-amount" placeholder="€" min="0" step="0.01">
                             </div>
-                            <button class="btn btn-primary" onclick="addExpense('fixed')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Fijo</button>
+                            <button type="button" class="btn btn-primary btn-block" onclick="addExpense('fixed')">+ Añadir fijo</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="card input-card" style="display: flex; flex-direction: column;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                        <label style="margin:0;">Gastos Variables</label>
-                        <button class="btn" onclick="togglePanel('variable-panel')" style="padding: 0.1rem 0.5rem; font-size: 0.7rem;">Editar ▼</button>
+                <div class="card input-card expense-card">
+                    <div class="card-title-row">
+                        <label class="no-margin">Gastos Variables</label>
+                        <button type="button" class="btn btn-sm" onclick="togglePanel('variable-panel', this)" aria-expanded="false">Editar</button>
                     </div>
                     <div class="input-wrapper minus">
-                        <span>€</span>
-                        <span id="total-variable-display" style="font-size: 1.5rem; font-weight: 700; color: white;">0.00</span>
+                        <span aria-hidden="true">€</span>
+                        <span id="total-variable-display" class="total-value">0.00</span>
                     </div>
-                    <div id="variable-panel" style="display: none; margin-top: 1rem; border-top: 1px solid #334155; padding-top: 1rem;">
-                        <div id="variable-list" style="display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; max-height: 150px; overflow-y: auto;"></div>
-                        
-                        <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                            <div style="display: flex; gap: 0.5rem;">
-                                <input type="text" id="new-variable-name" placeholder="Ej. Comida" style="flex: 1; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
-                                <input type="number" id="new-variable-amount" placeholder="€" style="width: 80px; background: #0f172a; border: 1px solid #334155; color: white; border-radius: 4px; padding: 0.5rem; font-size: 0.85rem; outline: none;">
+                    <div id="variable-panel" class="panel-editor">
+                        <div id="variable-list" class="expense-list" role="list"></div>
+                        <div class="editor-controls">
+                            <div class="editor-row">
+                                <input type="text" id="new-variable-name" placeholder="Ej. Comida" autocomplete="off">
+                                <input type="number" id="new-variable-amount" placeholder="€" min="0" step="0.01">
                             </div>
-                            <button class="btn btn-primary" onclick="addExpense('variable')" style="width: 100%; padding: 0.5rem; border-radius: 4px; font-weight: bold;">+ Añadir Variable</button>
+                            <button type="button" class="btn btn-primary btn-block" onclick="addExpense('variable')">+ Añadir variable</button>
                         </div>
                     </div>
                 </div>
 
                 <div class="card slider-card">
                     <div class="slider-header">
-                        <label>Inversión Mensual</label>
+                        <label for="allocation">Inversión Mensual</label>
                         <span id="allocation-display">30%</span>
                     </div>
                     <input type="range" id="allocation" min="0" max="100" value="30" onchange="updateAllocation(this.value)">
@@ -125,25 +148,27 @@
             </div>
 
             <div class="strategy-box">
-                <div class="strategy-icon">🐷</div>
+                <div class="strategy-icon" aria-hidden="true">🐷</div>
                 <div class="strategy-text">
                     <h3>Plan de Ataque</h3>
                     <p>
-                        Para el Master Set de Magic (<span id="magic-cost">€0</span>), guarda 
+                        Para el Master Set de Magic (<span id="magic-cost">€0</span>), guarda
                         <strong class="text-green" id="savings-suggestion">€0</strong> en la hucha.
                         Usa los <strong class="text-blue" id="spending-money">€0</strong> restantes para mangas sueltos.
                     </p>
-                    <div class="strategy-time">Tiempo estimado: <span id="months-to-finish">--</span> Meses</div>
+                    <div class="strategy-time">Tiempo estimado: <span id="months-to-finish">--</span> meses</div>
                 </div>
             </div>
         </section>
 
-        <div id="collections-container" class="collections-grid"></div>
-
+        <section>
+            <h2 class="section-title">Colecciones</h2>
+            <div id="collections-container" class="collections-grid"></div>
+        </section>
     </main>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
-    
+
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -153,7 +178,7 @@
             });
         }
     </script>
-    
+
     <script src="script.js"></script>
 </body>
 </html>
