@@ -736,15 +736,16 @@ input[type="range"] {
 }
 
 .manga-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
-    gap: 0.55rem;
-    padding: 0.6rem 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.15rem;
+    padding: 0.9rem 0 1.1rem;
 }
 
 .bookshelf-grid {
     position: relative;
-    padding: 1.2rem 1rem 1.5rem;
+    padding: 1.2rem 0.8rem 1.6rem;
     border-radius: 0.8rem;
     border: 1px solid rgba(118, 88, 52, 0.45);
     background:
@@ -762,39 +763,40 @@ input[type="range"] {
     background:
         repeating-linear-gradient(
             to bottom,
-            transparent 0 146px,
-            rgba(42, 28, 13, 0.55) 146px 151px,
-            rgba(165, 122, 68, 0.35) 151px 154px,
-            transparent 154px 162px
+            transparent 0 178px,
+            rgba(42, 28, 13, 0.58) 178px 184px,
+            rgba(165, 122, 68, 0.35) 184px 187px,
+            transparent 187px 198px
         );
 }
 
 .manga-cover {
-    aspect-ratio: 10 / 31;
+    width: var(--book-w, 28px);
+    height: var(--book-h, 168px);
     background: #0d1f30;
     position: relative;
-    border-radius: 4px;
+    border-radius: 3px;
     cursor: pointer;
     overflow: hidden;
-    transition: transform 0.35s ease, filter 0.25s ease, border-color 0.25s ease, box-shadow 0.35s ease;
-    filter: saturate(0.8) brightness(0.92);
+    transition: transform 0.32s ease, filter 0.22s ease, border-color 0.22s ease, box-shadow 0.32s ease;
+    filter: saturate(0.78) brightness(0.9);
     border: 1px solid rgba(177, 142, 92, 0.45);
     box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.55);
-    transform-origin: bottom center;
+    transform-origin: bottom left;
     isolation: isolate;
 }
 
 .manga-cover:hover {
-    transform: translateY(-4px);
+    transform: translateY(-2px);
     filter: saturate(1) brightness(1);
-    border-color: rgba(255, 209, 142, 0.65);
+    border-color: rgba(255, 209, 142, 0.7);
 }
 
 .manga-cover.owned {
     filter: saturate(1);
     border-color: rgba(46, 220, 158, 0.5);
     box-shadow: 2px 5px 11px rgba(0, 0, 0, 0.58), inset 0 0 0 1px rgba(46, 220, 158, 0.32);
-    z-index: 2;
+    z-index: 3;
 }
 
 .manga-cover.owned:hover {
@@ -809,7 +811,7 @@ input[type="range"] {
     display: flex;
     flex-direction: column;
     justify-content: space-between;
-    padding: 0.35rem 0.22rem;
+    padding: 0.35rem 0.18rem;
     background:
         linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0 10%, transparent 10% 88%, rgba(0, 0, 0, 0.28) 88% 100%),
         linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 28%, rgba(0, 0, 0, 0.16));
@@ -819,7 +821,7 @@ input[type="range"] {
 .shelf-book .book-spine-title {
     writing-mode: vertical-rl;
     text-orientation: mixed;
-    font-size: 0.54rem;
+    font-size: 0.5rem;
     font-weight: 700;
     letter-spacing: 0.03em;
     color: rgba(242, 236, 225, 0.92);
@@ -839,15 +841,15 @@ input[type="range"] {
 
 .shelf-book .book-face {
     position: absolute;
-    left: 0;
+    left: 1px;
     top: 0;
-    width: 100%;
+    width: 92px;
     height: 100%;
     border-radius: 4px;
     overflow: hidden;
     opacity: 0;
-    transform: translateX(0) translateY(0) scale(0.92);
-    transition: transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.25s ease;
+    transform: translateX(0) scale(0.92);
+    transition: transform 0.46s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease;
     z-index: 3;
     box-shadow: 0 15px 24px rgba(0, 0, 0, 0.45);
 }
@@ -893,16 +895,23 @@ input[type="range"] {
 }
 
 .shelf-book.is-pulled {
-    z-index: 14;
+    z-index: 25;
+    animation: pullSpine 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .shelf-book.is-pulled .book-face {
     opacity: 1;
-    transform: translateX(34px) translateY(-14px) scale(2.3);
+    transform: translateX(36px) scale(1);
 }
 
 .shelf-book.is-pulled .book-spine {
     opacity: 0.2;
+}
+
+@keyframes pullSpine {
+    0% { transform: translateX(0); }
+    65% { transform: translateX(14px); }
+    100% { transform: translateX(10px); }
 }
 
 .owned-overlay {

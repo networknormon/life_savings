@@ -908,6 +908,10 @@ function renderCollections() {
                     const cover = document.createElement('div');
                     const pulledKey = `${col.id}-${idx}`;
                     cover.className = `manga-cover shelf-book ${col.theme} ${isOwned ? 'owned' : ''} ${pulledMangaBooks.has(pulledKey) ? 'is-pulled' : ''}`;
+                    const spineWidth = 24 + ((idx + col.id) % 4) * 3;
+                    const spineHeight = 132 + ((idx + col.id) % 6) * 10;
+                    cover.style.setProperty('--book-w', `${spineWidth}px`);
+                    cover.style.setProperty('--book-h', `${spineHeight}px`);
                     cover.onclick = () => previewMangaBook(col.id, idx);
                     
                     if (col.folder && col.ext) {
