@@ -109,12 +109,12 @@ const mtgViewerState = {
 
 const MTG_MIN_SCALE = 1;
 const MTG_MAX_SCALE = 3.5;
-const pulledMangaBooks = new Set();
 const mangaViewerState = {
     collectionId: null,
     index: 0
 };
 let mangaPullTimeout = null;
+let activePulledBookEl = null;
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -921,13 +921,14 @@ function renderCollections() {
                 mangaGrid.className = 'manga-grid bookshelf-grid';
                 col.ownedList.forEach((isOwned, idx) => {
                     const cover = document.createElement('div');
-                    const pulledKey = `${col.id}-${idx}`;
-                    cover.className = `manga-cover shelf-book ${col.theme} ${isOwned ? 'owned' : ''} ${pulledMangaBooks.has(pulledKey) ? 'is-pulled' : ''}`;
+                    cover.className = `manga-cover shelf-book ${col.theme} ${isOwned ? 'owned' : ''}`;
                     const spineWidth = 24 + ((idx + col.id) % 4) * 3;
                     const spineHeight = 132 + ((idx + col.id) % 6) * 10;
+                    const hue = ((idx * 27) + (col.id * 34)) % 360;
                     cover.style.setProperty('--book-w', `${spineWidth}px`);
                     cover.style.setProperty('--book-h', `${spineHeight}px`);
-                    cover.onclick = () => previewMangaBook(col.id, idx);
+                    cover.style.setProperty('--spine-hue', `${hue}`);
+                    cover.onclick = (ev) => previewMangaBook(col.id, idx, ev);
                     
                     if (col.folder && col.ext) {
                         const imgPath = `${col.folder}/${idx + 1}.${col.ext}`;
@@ -990,17 +991,22 @@ window.toggleItem = (colId, idx) => {
     saveToDynamo();
 }
 
-window.previewMangaBook = (colId, idx) => {
+window.previewMangaBook = (colId, idx, ev) => {
+    const clickedBook = ev?.currentTarget;
+    if (!clickedBook) return;
+
     if (mangaPullTimeout) clearTimeout(mangaPullTimeout);
-    const key = `${colId}-${idx}`;
-    pulledMangaBooks.clear();
-    pulledMangaBooks.add(key);
-    renderCollections();
+    if (activePulledBookEl && activePulledBookEl !== clickedBook) {
+        activePulledBookEl.classList.remove('is-pulled');
+    }
+    activePulledBookEl = clickedBook;
+    clickedBook.classList.remove('is-pulled');
+    void clickedBook.offsetWidth;
+    clickedBook.classList.add('is-pulled');
+
     mangaPullTimeout = setTimeout(() => {
         window.openMangaViewer(colId, idx);
-        pulledMangaBooks.delete(key);
-        renderCollections();
-    }, 280);
+    }, 430);
 };
 
 function ensureMangaViewer() {
@@ -1096,6 +1102,10 @@ window.closeMangaViewer = () => {
     const modal = document.getElementById('manga-viewer-modal');
     if (!modal) return;
     modal.classList.add('hidden');
+    if (activePulledBookEl) {
+        activePulledBookEl.classList.remove('is-pulled');
+        activePulledBookEl = null;
+    }
     syncBodyScrollLock();
 };
 

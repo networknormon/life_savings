@@ -784,6 +784,7 @@ input[type="range"] {
     box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.55);
     transform-origin: bottom left;
     isolation: isolate;
+    perspective: 1000px;
 }
 
 .manga-cover:hover {
@@ -813,9 +814,12 @@ input[type="range"] {
     justify-content: space-between;
     padding: 0.35rem 0.18rem;
     background:
-        linear-gradient(90deg, rgba(0, 0, 0, 0.28) 0 10%, transparent 10% 88%, rgba(0, 0, 0, 0.28) 88% 100%),
-        linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 28%, rgba(0, 0, 0, 0.16));
+        linear-gradient(90deg, rgba(0, 0, 0, 0.34) 0 10%, transparent 10% 87%, rgba(0, 0, 0, 0.28) 87% 100%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 30%, rgba(0, 0, 0, 0.2)),
+        linear-gradient(135deg, hsl(var(--spine-hue, 210) 45% 30%), hsl(calc(var(--spine-hue, 210) + 14) 52% 18%));
     z-index: 2;
+    transform-origin: left center;
+    backface-visibility: hidden;
 }
 
 .shelf-book .book-spine-title {
@@ -824,7 +828,7 @@ input[type="range"] {
     font-size: 0.5rem;
     font-weight: 700;
     letter-spacing: 0.03em;
-    color: rgba(242, 236, 225, 0.92);
+    color: rgba(255, 248, 236, 0.95);
     text-shadow: 0 1px 1px rgba(0, 0, 0, 0.4);
     overflow: hidden;
     max-height: 100%;
@@ -849,9 +853,9 @@ input[type="range"] {
     overflow: hidden;
     opacity: 0;
     transform: translateX(0) scale(0.92);
-    transition: transform 0.46s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.22s ease;
+    transition: transform 0.5s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.24s ease;
     z-index: 3;
-    box-shadow: 0 15px 24px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 16px 28px rgba(0, 0, 0, 0.48);
 }
 
 .shelf-book .book-face img,
@@ -872,22 +876,56 @@ input[type="range"] {
 
 .shelf-book.is-pulled {
     z-index: 25;
-    animation: pullSpine 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation: pullSpine 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 .shelf-book.is-pulled .book-face {
     opacity: 1;
-    transform: translateX(36px) scale(1);
+    transform: translateX(40px) scale(1);
 }
 
 .shelf-book.is-pulled .book-spine {
-    opacity: 0.2;
+    animation: spineOpen 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.shelf-book::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: 2px;
+    background:
+        repeating-linear-gradient(
+            180deg,
+            #f0e6d2 0 2px,
+            #e6d8bf 2px 4px
+        );
+    opacity: 0;
+    transform-origin: left center;
+    transform: rotateY(-86deg) translateX(-1px);
+    filter: brightness(0.96);
+}
+
+.shelf-book.is-pulled::before {
+    animation: pagesOpen 0.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
 @keyframes pullSpine {
     0% { transform: translateX(0); }
-    65% { transform: translateX(14px); }
-    100% { transform: translateX(10px); }
+    55% { transform: translateX(15px); }
+    100% { transform: translateX(11px); }
+}
+
+@keyframes spineOpen {
+    0% { opacity: 1; transform: rotateY(0deg); }
+    55% { opacity: 0.95; transform: rotateY(-38deg); }
+    100% { opacity: 0.16; transform: rotateY(-56deg); }
+}
+
+@keyframes pagesOpen {
+    0% { opacity: 0; transform: rotateY(-86deg) translateX(-1px); }
+    25% { opacity: 0.55; }
+    100% { opacity: 0.88; transform: rotateY(-10deg) translateX(2px); }
 }
 
 .owned-overlay {
