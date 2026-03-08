@@ -110,6 +110,11 @@ const mtgViewerState = {
 const MTG_MIN_SCALE = 1;
 const MTG_MAX_SCALE = 3.5;
 const pulledMangaBooks = new Set();
+const mangaViewerState = {
+    collectionId: null,
+    index: 0
+};
+let mangaPullTimeout = null;
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -120,6 +125,14 @@ function getPointerDistance(points) {
     const dx = points[0].x - points[1].x;
     const dy = points[0].y - points[1].y;
     return Math.hypot(dx, dy);
+}
+
+function syncBodyScrollLock() {
+    const mtgModal = document.getElementById('mtg-viewer-modal');
+    const mangaModal = document.getElementById('manga-viewer-modal');
+    const mtgOpen = mtgModal && !mtgModal.classList.contains('hidden');
+    const mangaOpen = mangaModal && !mangaModal.classList.contains('hidden');
+    document.body.style.overflow = (mtgOpen || mangaOpen) ? 'hidden' : '';
 }
 
 function applyMtgTransform() {
@@ -584,6 +597,8 @@ function updateAllUI() {
     const { totalFixed, totalVar } = renderExpenseLists();
     calculateFinances(totalFixed, totalVar);
     renderCollections();
+    renderMtgViewer();
+    renderMangaViewer();
 }
 
 function buildSavingsPanel(monthlyAdd, totalRealSavings) {
@@ -927,9 +942,6 @@ function renderCollections() {
                                     <span>${idx + 1}</span>
                                 </div>
                             </div>
-                            <button type="button" class="book-own-btn ${isOwned ? 'is-owned' : ''}" onclick="toggleMangaOwned(${col.id}, ${idx}, event)" aria-label="${isOwned ? 'Marcar pendiente' : 'Marcar comprado'} volumen ${idx + 1}">
-                                ${isOwned ? '✓' : '+'}
-                            </button>
                         `;
                     } else {
                         cover.innerHTML = `
@@ -947,9 +959,6 @@ function renderCollections() {
                                     <div class="spine-bottom">★</div>
                                 </div>
                             </div>
-                            <button type="button" class="book-own-btn ${isOwned ? 'is-owned' : ''}" onclick="toggleMangaOwned(${col.id}, ${idx}, event)" aria-label="${isOwned ? 'Marcar pendiente' : 'Marcar comprado'} volumen ${idx + 1}">
-                                ${isOwned ? '✓' : '+'}
-                            </button>
                         `;
                     }
                     mangaGrid.appendChild(cover);
@@ -977,22 +986,124 @@ window.toggleItem = (colId, idx) => {
     col.ownedList[idx] = !col.ownedList[idx];
     updateAllUI();
     renderMtgViewer();
+    renderMangaViewer();
     saveToDynamo();
 }
 
-window.toggleMangaOwned = (colId, idx, ev) => {
-    if (ev) ev.stopPropagation();
-    toggleItem(colId, idx);
-};
-
 window.previewMangaBook = (colId, idx) => {
+    if (mangaPullTimeout) clearTimeout(mangaPullTimeout);
     const key = `${colId}-${idx}`;
+    pulledMangaBooks.clear();
     pulledMangaBooks.add(key);
     renderCollections();
-    setTimeout(() => {
+    mangaPullTimeout = setTimeout(() => {
+        window.openMangaViewer(colId, idx);
         pulledMangaBooks.delete(key);
         renderCollections();
-    }, 1300);
+    }, 280);
+};
+
+function ensureMangaViewer() {
+    if (document.getElementById('manga-viewer-modal')) return;
+    const modal = document.createElement('div');
+    modal.id = 'manga-viewer-modal';
+    modal.className = 'manga-modal hidden';
+    modal.innerHTML = `
+        <div class="manga-modal-content" role="dialog" aria-modal="true" aria-labelledby="manga-viewer-title">
+            <button type="button" class="mtg-close-btn" id="manga-close-btn" aria-label="Cerrar visor">✕</button>
+            <div class="manga-modal-layout">
+                <div class="manga-cover-wrap">
+                    <img id="manga-viewer-image" class="manga-viewer-image" alt="">
+                </div>
+                <div class="manga-side">
+                    <h3 id="manga-viewer-title">Tomo</h3>
+                    <p id="manga-viewer-subtitle" class="mtg-viewer-price"></p>
+                    <p id="manga-viewer-index" class="mtg-viewer-index">1 / 1</p>
+                    <div class="mtg-viewer-controls">
+                        <button type="button" class="btn" id="manga-prev-btn">← Anterior</button>
+                        <button type="button" class="btn" id="manga-next-btn">Siguiente →</button>
+                    </div>
+                    <button type="button" class="btn btn-primary" id="manga-owned-toggle-btn">Marcar como comprado</button>
+                </div>
+            </div>
+        </div>
+    `;
+    const content = modal.querySelector('.manga-modal-content');
+    modal.addEventListener('pointerdown', (ev) => {
+        if (ev.target === modal) closeMangaViewer();
+    });
+    content.addEventListener('pointerdown', (ev) => ev.stopPropagation());
+    document.body.appendChild(modal);
+
+    document.getElementById('manga-close-btn').onclick = closeMangaViewer;
+    document.getElementById('manga-prev-btn').onclick = () => moveMangaViewer(-1);
+    document.getElementById('manga-next-btn').onclick = () => moveMangaViewer(1);
+    document.getElementById('manga-owned-toggle-btn').onclick = () => {
+        const col = appData.collections.find(c => c.id === mangaViewerState.collectionId);
+        if (!col || col.type !== 'manga') return;
+        toggleItem(mangaViewerState.collectionId, mangaViewerState.index);
+    };
+}
+
+function getMangaCoverSrc(collection, index) {
+    if (!collection.folder || !collection.ext) return null;
+    return `${collection.folder}/${index + 1}.${collection.ext}`;
+}
+
+function renderMangaViewer() {
+    const modal = document.getElementById('manga-viewer-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    const collection = appData.collections.find(c => c.id === mangaViewerState.collectionId);
+    if (!collection || collection.type !== 'manga') return;
+
+    const index = mangaViewerState.index;
+    const owned = Boolean(collection.ownedList[index]);
+    const imageEl = document.getElementById('manga-viewer-image');
+    const titleEl = document.getElementById('manga-viewer-title');
+    const subtitleEl = document.getElementById('manga-viewer-subtitle');
+    const indexEl = document.getElementById('manga-viewer-index');
+    const toggleBtn = document.getElementById('manga-owned-toggle-btn');
+
+    const src = getMangaCoverSrc(collection, index);
+    if (src) {
+        imageEl.src = src;
+        imageEl.alt = `${collection.name} #${index + 1}`;
+    } else {
+        imageEl.removeAttribute('src');
+        imageEl.alt = `${collection.name} #${index + 1}`;
+    }
+
+    titleEl.textContent = `${collection.name} · Tomo ${index + 1}`;
+    subtitleEl.textContent = `${collection.publisher} • ${formatMoney(collection.pricePerItem)}`;
+    indexEl.textContent = `${index + 1} / ${collection.totalItems}`;
+    toggleBtn.textContent = owned ? 'Marcar como pendiente' : 'Marcar como comprado';
+    toggleBtn.classList.toggle('btn-danger', owned);
+    toggleBtn.classList.toggle('btn-primary', !owned);
+}
+
+window.openMangaViewer = (collectionId, index) => {
+    ensureMangaViewer();
+    mangaViewerState.collectionId = collectionId;
+    mangaViewerState.index = index;
+    const modal = document.getElementById('manga-viewer-modal');
+    modal.classList.remove('hidden');
+    syncBodyScrollLock();
+    renderMangaViewer();
+};
+
+window.closeMangaViewer = () => {
+    const modal = document.getElementById('manga-viewer-modal');
+    if (!modal) return;
+    modal.classList.add('hidden');
+    syncBodyScrollLock();
+};
+
+window.moveMangaViewer = (step) => {
+    const collection = appData.collections.find(c => c.id === mangaViewerState.collectionId);
+    if (!collection || collection.type !== 'manga') return;
+    mangaViewerState.index = (mangaViewerState.index + step + collection.totalItems) % collection.totalItems;
+    renderMangaViewer();
 };
 
 function ensureMtgViewer() {
@@ -1178,7 +1289,7 @@ window.openMtgViewer = (collectionId, index, ev) => {
     mtgViewerState.index = index;
     const modal = document.getElementById('mtg-viewer-modal');
     modal.classList.remove('hidden');
-    document.body.style.overflow = 'hidden';
+    syncBodyScrollLock();
     resetMtgZoom();
     renderMtgViewer();
 };
@@ -1187,7 +1298,7 @@ window.closeMtgViewer = () => {
     const modal = document.getElementById('mtg-viewer-modal');
     if (!modal) return;
     modal.classList.add('hidden');
-    document.body.style.overflow = '';
+    syncBodyScrollLock();
     resetMtgZoom();
 };
 
@@ -1200,11 +1311,24 @@ window.moveMtgViewer = (step) => {
 }
 
 document.addEventListener('keydown', (ev) => {
-    const modal = document.getElementById('mtg-viewer-modal');
-    if (!modal || modal.classList.contains('hidden')) return;
-    if (ev.key === 'Escape') closeMtgViewer();
-    if (ev.key === 'ArrowRight') moveMtgViewer(1);
-    if (ev.key === 'ArrowLeft') moveMtgViewer(-1);
+    const mtgModal = document.getElementById('mtg-viewer-modal');
+    const mangaModal = document.getElementById('manga-viewer-modal');
+    const mtgOpen = mtgModal && !mtgModal.classList.contains('hidden');
+    const mangaOpen = mangaModal && !mangaModal.classList.contains('hidden');
+    if (!mtgOpen && !mangaOpen) return;
+
+    if (ev.key === 'Escape') {
+        if (mangaOpen) closeMangaViewer();
+        if (mtgOpen) closeMtgViewer();
+    }
+    if (ev.key === 'ArrowRight') {
+        if (mangaOpen) moveMangaViewer(1);
+        else if (mtgOpen) moveMtgViewer(1);
+    }
+    if (ev.key === 'ArrowLeft') {
+        if (mangaOpen) moveMangaViewer(-1);
+        else if (mtgOpen) moveMtgViewer(-1);
+    }
 });
 
 // INIT ARRANQUE BÁSICO
