@@ -84,7 +84,12 @@
         <section class="finance-panel" aria-label="panel financiero">
             <div class="finance-toolbar card">
                 <h2>📅 Finanzas del Mes</h2>
-                <input type="month" id="month-selector" onchange="changeMonth(this.value)" class="month-input" aria-label="Seleccionar mes">
+                <div class="month-picker" aria-label="selector de fecha">
+                    <button type="button" class="btn btn-sm month-nav-btn" onclick="navigateMonth(-1)" aria-label="Mes anterior">←</button>
+                    <select id="month-selector" class="month-select" onchange="onYearMonthSelectorChange()" aria-label="Seleccionar mes"></select>
+                    <select id="year-selector" class="month-select year-select" onchange="onYearMonthSelectorChange()" aria-label="Seleccionar año"></select>
+                    <button type="button" class="btn btn-sm month-nav-btn" onclick="navigateMonth(1)" aria-label="Mes siguiente">→</button>
+                </div>
             </div>
 
             <div class="inputs-grid">

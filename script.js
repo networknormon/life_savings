@@ -68,6 +68,10 @@ const initialMagicCards = [
 
 const today = new Date();
 const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+const MONTH_NAMES_ES = [
+    'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+    'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
+];
 
 let appData = {
     globalSavings: 2100, 
@@ -84,7 +88,6 @@ let appData = {
     collections: [
         { id: 1, name: "Magic: FF Master Set", publisher: "Wizards", type: "cards", items: initialMagicCards, ownedList: Array(45).fill(false), expanded: false, theme: "purple", icon: "🔮", priority: 3 },
         { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 },
-        { id: 3, name: "Vinland Saga", publisher: "Planeta", type: "manga", totalItems: 29, ownedList: generateOwned(29, 3), pricePerItem: 12.30, expanded: false, theme: "col-theme-blue", icon: "🛡️", folder: "VinlandSaga", ext: "webp", priority: 1 },
         { id: 4, name: "Dragon Ball Ultimate", publisher: "Planeta", type: "manga", totalItems: 34, ownedList: generateOwned(34, 7), pricePerItem: 8.60, expanded: false, theme: "col-theme-yellow", icon: "🐉", folder: "DragonBall", ext: "webp", priority: 2 },
         { id: 5, name: "Slam Dunk", publisher: "Ivrea", type: "manga", totalItems: 20, ownedList: generateOwned(20,1), pricePerItem: 14.25, expanded: false, theme: "col-theme-orange", icon: "🏀⛹🏻‍♂️", folder: "SlamDunk", ext: "webp", priority: 3 }
     ]
@@ -374,6 +377,56 @@ function createNewMonthProfile(monthStr) {
     }
 }
 
+function parseMonthStr(monthStr) {
+    const [year, month] = monthStr.split('-').map(Number);
+    return { year, month };
+}
+
+function formatMonthStr(year, month) {
+    return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function getSelectorYears() {
+    const fromData = Object.keys(appData.monthlyData).map(m => Number(m.split('-')[0])).filter(Boolean);
+    fromData.push(today.getFullYear() - 1, today.getFullYear(), today.getFullYear() + 1);
+    const unique = [...new Set(fromData)].sort((a, b) => a - b);
+    return unique;
+}
+
+function ensureMonthControls() {
+    const monthSelect = document.getElementById('month-selector');
+    const yearSelect = document.getElementById('year-selector');
+    if (!monthSelect || !yearSelect) return;
+
+    if (!monthSelect.options.length) {
+        monthSelect.innerHTML = MONTH_NAMES_ES
+            .map((name, idx) => `<option value="${String(idx + 1).padStart(2, '0')}">${name}</option>`)
+            .join('');
+    }
+
+    const years = getSelectorYears();
+    const currentYearOptions = Array.from(yearSelect.options).map(o => Number(o.value));
+    const sameLength = currentYearOptions.length === years.length;
+    const sameValues = sameLength && currentYearOptions.every((y, idx) => y === years[idx]);
+    if (!sameValues) {
+        yearSelect.innerHTML = years.map(year => `<option value="${year}">${year}</option>`).join('');
+    }
+}
+
+window.onYearMonthSelectorChange = () => {
+    const monthSelect = document.getElementById('month-selector');
+    const yearSelect = document.getElementById('year-selector');
+    if (!monthSelect || !yearSelect || !monthSelect.value || !yearSelect.value) return;
+    changeMonth(`${yearSelect.value}-${monthSelect.value}`);
+};
+
+window.navigateMonth = (step) => {
+    const { year, month } = parseMonthStr(appData.currentMonth);
+    const date = new Date(year, month - 1, 1);
+    date.setMonth(date.getMonth() + step);
+    changeMonth(formatMonthStr(date.getFullYear(), date.getMonth() + 1));
+};
+
 window.changeMonth = (newMonth) => {
     if (!newMonth) return;
     appData.currentMonth = newMonth;
@@ -519,7 +572,10 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
 }
 
 function updateAllUI() {
-    document.getElementById('month-selector').value = appData.currentMonth;
+    ensureMonthControls();
+    const { year, month } = parseMonthStr(appData.currentMonth);
+    document.getElementById('month-selector').value = String(month).padStart(2, '0');
+    document.getElementById('year-selector').value = String(year);
     document.getElementById('salary').value = appData.monthlyData[appData.currentMonth].salary;
     document.getElementById('allocation').value = appData.monthlyData[appData.currentMonth].allocation;
     document.getElementById('allocation-display').innerText = `${appData.monthlyData[appData.currentMonth].allocation}%`;
@@ -846,7 +902,7 @@ function renderCollections() {
                 bodyDiv.appendChild(listGrid);
             } else {
                 const mangaGrid = document.createElement('div');
-                mangaGrid.className = 'manga-grid';
+                mangaGrid.className = 'manga-grid bookshelf-grid';
                 col.ownedList.forEach((isOwned, idx) => {
                     const cover = document.createElement('div');
                     cover.className = `manga-cover ${col.theme} ${isOwned ? 'owned' : ''}`;
