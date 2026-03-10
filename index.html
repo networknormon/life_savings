@@ -173,6 +173,30 @@
             <h2 class="section-title">Colecciones</h2>
             <div id="collections-container" class="collections-grid"></div>
         </section>
+
+        <section class="gaming-section">
+            <div class="gaming-header">
+                <h2 class="section-title">Gaming Collection</h2>
+                <p class="gaming-subtitle">Busca y añade juegos con portada y precio en tiempo real</p>
+            </div>
+
+            <div class="card gaming-search-card">
+                <div class="gaming-search-row">
+                    <input type="text" id="game-search-input" class="game-search-input" placeholder="Ej. Elden Ring, Hollow Knight..." autocomplete="off">
+                    <button type="button" class="btn btn-primary" onclick="searchGames()">Buscar</button>
+                </div>
+                <div id="game-search-status" class="gaming-status" aria-live="polite"></div>
+                <div id="game-search-results" class="game-search-results"></div>
+            </div>
+
+            <div class="card gaming-shelf-card">
+                <div class="gaming-shelf-header">
+                    <h3>🎮 Tu estantería</h3>
+                    <span id="gaming-count" class="badge neutral">0 juegos</span>
+                </div>
+                <div id="gaming-shelf" class="gaming-shelf"></div>
+            </div>
+        </section>
     </main>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>

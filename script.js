@@ -87,10 +87,11 @@ let appData = {
     },
     collections: [
         { id: 1, name: "Magic: FF Master Set", publisher: "Wizards", type: "cards", items: initialMagicCards, ownedList: Array(45).fill(false), expanded: false, theme: "purple", icon: "🔮", priority: 3 },
-        { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 },
-        { id: 4, name: "Dragon Ball Ultimate", publisher: "Planeta", type: "manga", totalItems: 34, ownedList: generateOwned(34, 7), pricePerItem: 8.60, expanded: false, theme: "col-theme-yellow", icon: "🐉", folder: "DragonBall", ext: "webp", priority: 2 },
-        { id: 5, name: "Slam Dunk", publisher: "Ivrea", type: "manga", totalItems: 20, ownedList: generateOwned(20,1), pricePerItem: 14.25, expanded: false, theme: "col-theme-orange", icon: "🏀⛹🏻‍♂️", folder: "SlamDunk", ext: "webp", priority: 3 }
-    ]
+        { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 }
+    ],
+    gaming: {
+        items: []
+    }
 };
 
 const mtgViewerState = {
@@ -265,6 +266,7 @@ function loadDataFromDynamo() {
                 if (dbFin.monthlyData) {
                     appData.globalSavings = dbFin.globalSavings || 0;
                     appData.monthlyData = dbFin.monthlyData;
+                    appData.gaming.items = Array.isArray(dbFin.gamingCollection) ? dbFin.gamingCollection : [];
                     if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
                 } else if (dbFin.salary !== undefined) {
                     appData.globalSavings = dbFin.globalSavings || 0; // CORREGIDA LA INCONGRUENCIA DEL 2100
@@ -274,6 +276,7 @@ function loadDataFromDynamo() {
                         variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: dbFin.variableExpenses || 0 }],
                         allocation: dbFin.allocation || 30
                     };
+                    appData.gaming.items = Array.isArray(dbFin.gamingCollection) ? dbFin.gamingCollection : [];
                 }
             }
             updateAllUI();
@@ -312,7 +315,7 @@ function saveToDynamo() {
         Item: {
             userId: dbUserId,
             collectionsData: JSON.stringify(collectionsToSave),
-            finances: { globalSavings: appData.globalSavings, monthlyData: appData.monthlyData },
+            finances: { globalSavings: appData.globalSavings, monthlyData: appData.monthlyData, gamingCollection: appData.gaming.items },
             lastUpdated: new Date().toISOString()
         }
     };
@@ -424,6 +427,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     });
+
+    const gameSearchInput = document.getElementById('game-search-input');
+    if (gameSearchInput) {
+        gameSearchInput.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                searchGames();
+            }
+        });
+    }
 });
 
 
@@ -651,6 +664,7 @@ function updateAllUI() {
     const { totalFixed, totalVar } = renderExpenseLists();
     calculateFinances(totalFixed, totalVar);
     renderCollections();
+    renderGamingCollection();
     renderMtgViewer();
     renderMangaViewer();
 }
@@ -1026,6 +1040,127 @@ function renderCollections() {
         container.appendChild(card);
     });
 }
+
+function renderGameSearchResults(results = []) {
+    const resultsEl = document.getElementById('game-search-results');
+    if (!resultsEl) return;
+    resultsEl.innerHTML = '';
+
+    if (!results.length) return;
+
+    results.forEach(game => {
+        const card = document.createElement('article');
+        card.className = 'game-result-card';
+        card.innerHTML = `
+            <img class="game-result-thumb" src="${game.thumb || ''}" alt="${escapeHtml(game.external || 'Juego')}" loading="lazy" decoding="async">
+            <div class="game-result-main">
+                <div class="game-result-title" title="${escapeHtml(game.external || 'Juego')}">${escapeHtml(game.external || 'Juego')}</div>
+                <div class="game-result-price">Oferta: ${formatMoney(parseFloat(game.salePrice || 0))} · PVP: ${formatMoney(parseFloat(game.normalPrice || 0))}</div>
+                <button type="button" class="btn btn-sm btn-primary">Añadir</button>
+            </div>
+        `;
+        const addBtn = card.querySelector('button');
+        addBtn.onclick = () => addGameToCollection(game);
+        resultsEl.appendChild(card);
+    });
+}
+
+function renderGamingCollection() {
+    const shelfEl = document.getElementById('gaming-shelf');
+    const countEl = document.getElementById('gaming-count');
+    if (!shelfEl || !countEl) return;
+
+    const items = appData.gaming.items || [];
+    countEl.textContent = `${items.length} juego${items.length === 1 ? '' : 's'}`;
+    shelfEl.innerHTML = '';
+
+    if (!items.length) {
+        shelfEl.innerHTML = '<div class="gaming-empty">Tu shelf está vacía. Busca un juego arriba y añádelo.</div>';
+        return;
+    }
+
+    items.forEach(item => {
+        const gameCard = document.createElement('article');
+        gameCard.className = 'game-shelf-card';
+        gameCard.innerHTML = `
+            <img class="game-shelf-cover" src="${item.cover || ''}" alt="${escapeHtml(item.title)}" loading="lazy" decoding="async">
+            <div class="game-shelf-info">
+                <div class="game-shelf-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
+                <div class="game-shelf-price">Actual: ${formatMoney(item.currentPrice || 0)}</div>
+                <div class="game-shelf-price">Histórico: ${formatMoney(item.cheapestEver || 0)}</div>
+                <button type="button" class="btn btn-sm" onclick="removeGameFromCollection('${item.id}')">Quitar</button>
+            </div>
+        `;
+        shelfEl.appendChild(gameCard);
+    });
+}
+
+window.searchGames = async () => {
+    const input = document.getElementById('game-search-input');
+    const status = document.getElementById('game-search-status');
+    if (!input || !status) return;
+    const query = input.value.trim();
+    if (!query) {
+        status.textContent = 'Escribe el nombre de un juego para buscar.';
+        renderGameSearchResults([]);
+        return;
+    }
+
+    status.textContent = 'Buscando en CheapShark...';
+    try {
+        const res = await fetch(`https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(query)}&limit=20`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const results = await res.json();
+        renderGameSearchResults(results || []);
+        status.textContent = results?.length ? `${results.length} resultado(s)` : 'Sin resultados para esa búsqueda.';
+    } catch (err) {
+        console.error('Error buscando juegos:', err);
+        status.textContent = 'No se pudo consultar la API de juegos.';
+        renderGameSearchResults([]);
+    }
+};
+
+async function fetchGameDetails(gameId) {
+    try {
+        const res = await fetch(`https://www.cheapshark.com/api/1.0/games?id=${encodeURIComponent(gameId)}`);
+        if (!res.ok) return null;
+        return await res.json();
+    } catch {
+        return null;
+    }
+}
+
+window.addGameToCollection = async (game) => {
+    const status = document.getElementById('game-search-status');
+    if (appData.gaming.items.some(item => item.id === game.gameID)) {
+        if (status) status.textContent = 'Ese juego ya está en tu colección.';
+        return;
+    }
+
+    if (status) status.textContent = 'Añadiendo juego y cargando metadatos...';
+    const details = await fetchGameDetails(game.gameID);
+
+    const normalized = {
+        id: game.gameID,
+        title: details?.info?.title || game.external || 'Juego',
+        cover: details?.info?.thumb || game.thumb || '',
+        currentPrice: parseFloat(game.salePrice || details?.deals?.[0]?.price || 0),
+        normalPrice: parseFloat(game.normalPrice || details?.deals?.[0]?.retailPrice || 0),
+        cheapestEver: parseFloat(details?.cheapestPriceEver?.price || game.salePrice || 0),
+        steamAppID: details?.info?.steamAppID || game.steamAppID || null
+    };
+
+    appData.gaming.items.unshift(normalized);
+    renderGamingCollection();
+    saveToDynamo();
+    if (status) status.textContent = `"${normalized.title}" añadido a tu colección.`;
+};
+
+window.removeGameFromCollection = (id) => {
+    appData.gaming.items = appData.gaming.items.filter(item => item.id !== id);
+    renderGamingCollection();
+    saveToDynamo();
+};
 
 window.toggleExpand = (id) => {
     const col = appData.collections.find(c => c.id === id);

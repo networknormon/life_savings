@@ -462,6 +462,161 @@ input[type="range"] {
     color: var(--text-muted);
 }
 
+.gaming-section {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.gaming-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.gaming-subtitle {
+    color: var(--text-muted);
+    font-size: 0.85rem;
+}
+
+.gaming-search-card,
+.gaming-shelf-card {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.gaming-search-row {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+}
+
+.game-search-input {
+    flex: 1;
+    border: 1px solid var(--line);
+    background: #0a1a2b;
+    color: var(--text-main);
+    border-radius: 0.55rem;
+    padding: 0.55rem 0.7rem;
+    font-size: 0.9rem;
+    outline: none;
+}
+
+.gaming-status {
+    min-height: 1.1rem;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+}
+
+.game-search-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.6rem;
+}
+
+.game-result-card {
+    display: flex;
+    gap: 0.6rem;
+    padding: 0.55rem;
+    border-radius: 0.6rem;
+    border: 1px solid rgba(157, 176, 193, 0.16);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.game-result-thumb {
+    width: 72px;
+    height: 96px;
+    border-radius: 0.45rem;
+    object-fit: cover;
+    border: 1px solid rgba(157, 176, 193, 0.25);
+    background: #0b1d2e;
+}
+
+.game-result-main {
+    min-width: 0;
+    flex: 1;
+    display: grid;
+    gap: 0.3rem;
+}
+
+.game-result-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.game-result-price {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.gaming-shelf-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.gaming-shelf {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+    gap: 0.75rem;
+    padding: 0.5rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgba(165, 122, 68, 0.28);
+    background:
+        linear-gradient(180deg, rgba(90, 64, 34, 0.18), rgba(56, 37, 17, 0.26)),
+        repeating-linear-gradient(
+            to bottom,
+            transparent 0 182px,
+            rgba(62, 41, 19, 0.6) 182px 188px,
+            transparent 188px 204px
+        );
+    min-height: 180px;
+}
+
+.gaming-empty {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    padding: 0.35rem;
+}
+
+.game-shelf-card {
+    border: 1px solid rgba(157, 176, 193, 0.2);
+    background: rgba(10, 24, 36, 0.72);
+    border-radius: 0.65rem;
+    overflow: hidden;
+}
+
+.game-shelf-cover {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    background: #10263a;
+    display: block;
+}
+
+.game-shelf-info {
+    padding: 0.45rem 0.5rem 0.55rem;
+    display: grid;
+    gap: 0.22rem;
+}
+
+.game-shelf-title {
+    font-size: 0.82rem;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.game-shelf-price {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+}
+
 .collections-grid {
     display: grid;
     gap: 1rem;
@@ -1336,6 +1491,11 @@ textarea {
 
     .month-select {
         flex: 1;
+    }
+
+    .gaming-search-row {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .mtg-modal-layout {
