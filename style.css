@@ -509,6 +509,19 @@ input[type="range"] {
     font-size: 0.8rem;
 }
 
+.manual-game-panel {
+    border-top: 1px solid rgba(157, 176, 193, 0.2);
+    padding-top: 0.7rem;
+    display: grid;
+    gap: 0.6rem;
+}
+
+.manual-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 0.5rem;
+}
+
 .game-search-results {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
@@ -615,6 +628,12 @@ input[type="range"] {
 .game-shelf-price {
     font-size: 0.76rem;
     color: var(--text-muted);
+}
+
+.game-shelf-meta {
+    font-size: 0.72rem;
+    color: #bfd0de;
+    opacity: 0.9;
 }
 
 .collections-grid {

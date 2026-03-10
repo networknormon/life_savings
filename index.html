@@ -184,9 +184,23 @@
                 <div class="gaming-search-row">
                     <input type="text" id="game-search-input" class="game-search-input" placeholder="Ej. Elden Ring, Hollow Knight..." autocomplete="off">
                     <button type="button" class="btn btn-primary" onclick="searchGames()">Buscar</button>
+                    <button type="button" class="btn" onclick="refreshGamingPrices()">Actualizar precios</button>
+                    <button type="button" class="btn" onclick="toggleManualGamePanel()">Añadir manual</button>
                 </div>
                 <div id="game-search-status" class="gaming-status" aria-live="polite"></div>
                 <div id="game-search-results" class="game-search-results"></div>
+
+                <div id="manual-game-panel" class="manual-game-panel hidden">
+                    <div class="manual-grid">
+                        <input type="text" id="manual-game-title" class="game-search-input" placeholder="Título (ej: Final Fantasy I・II Premium Package)">
+                        <input type="text" id="manual-game-platform" class="game-search-input" placeholder="Plataforma (Switch, PS1, etc.)">
+                        <input type="text" id="manual-game-region" class="game-search-input" placeholder="Región/edición (JP, NTSC-J, Premium...)">
+                        <input type="number" id="manual-game-price" class="game-search-input" placeholder="Precio actual en €" min="0" step="0.01">
+                        <input type="text" id="manual-game-cover" class="game-search-input" placeholder="URL portada (opcional)">
+                        <input type="text" id="manual-game-alias" class="game-search-input" placeholder="Alias de búsqueda (opcional, ej: ff i ii)">
+                    </div>
+                    <button type="button" class="btn btn-primary" onclick="addManualGame()">Guardar juego manual</button>
+                </div>
             </div>
 
             <div class="card gaming-shelf-card">

@@ -90,7 +90,8 @@ let appData = {
         { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 }
     ],
     gaming: {
-        items: []
+        items: [],
+        aliases: {}
     }
 };
 
@@ -117,6 +118,23 @@ const mangaViewerState = {
 let mangaPullTimeout = null;
 let activePulledBookEl = null;
 let bookTransitionTimeout = null;
+
+const BUILTIN_GAME_ALIASES = {
+    'final fantasy i ii premium package': [
+        'final fantasy 1 2 premium package',
+        'final fantasy i ii',
+        'final fantasy 1 2',
+        'ff i ii',
+        'ff 1 2',
+        'pixel remaster'
+    ],
+    "chocobo's dungeon": [
+        'chocobos mystery dungeon',
+        'chocobo mystery dungeon',
+        'chocobo',
+        'every buddy'
+    ]
+};
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -267,6 +285,7 @@ function loadDataFromDynamo() {
                     appData.globalSavings = dbFin.globalSavings || 0;
                     appData.monthlyData = dbFin.monthlyData;
                     appData.gaming.items = Array.isArray(dbFin.gamingCollection) ? dbFin.gamingCollection : [];
+                    appData.gaming.aliases = dbFin.gamingAliases && typeof dbFin.gamingAliases === 'object' ? dbFin.gamingAliases : {};
                     if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
                 } else if (dbFin.salary !== undefined) {
                     appData.globalSavings = dbFin.globalSavings || 0; // CORREGIDA LA INCONGRUENCIA DEL 2100
@@ -277,6 +296,7 @@ function loadDataFromDynamo() {
                         allocation: dbFin.allocation || 30
                     };
                     appData.gaming.items = Array.isArray(dbFin.gamingCollection) ? dbFin.gamingCollection : [];
+                    appData.gaming.aliases = dbFin.gamingAliases && typeof dbFin.gamingAliases === 'object' ? dbFin.gamingAliases : {};
                 }
             }
             updateAllUI();
@@ -315,7 +335,12 @@ function saveToDynamo() {
         Item: {
             userId: dbUserId,
             collectionsData: JSON.stringify(collectionsToSave),
-            finances: { globalSavings: appData.globalSavings, monthlyData: appData.monthlyData, gamingCollection: appData.gaming.items },
+            finances: {
+                globalSavings: appData.globalSavings,
+                monthlyData: appData.monthlyData,
+                gamingCollection: appData.gaming.items,
+                gamingAliases: appData.gaming.aliases
+            },
             lastUpdated: new Date().toISOString()
         }
     };
@@ -1052,10 +1077,11 @@ function renderGameSearchResults(results = []) {
         const card = document.createElement('article');
         card.className = 'game-result-card';
         card.innerHTML = `
-            <img class="game-result-thumb" src="${game.thumb || ''}" alt="${escapeHtml(game.external || 'Juego')}" loading="lazy" decoding="async">
+            <img class="game-result-thumb" src="${game.cover || ''}" alt="${escapeHtml(game.title || 'Juego')}" loading="lazy" decoding="async">
             <div class="game-result-main">
-                <div class="game-result-title" title="${escapeHtml(game.external || 'Juego')}">${escapeHtml(game.external || 'Juego')}</div>
-                <div class="game-result-price">Oferta: ${formatMoney(parseFloat(game.salePrice || 0))} · PVP: ${formatMoney(parseFloat(game.normalPrice || 0))}</div>
+                <div class="game-result-title" title="${escapeHtml(game.title || 'Juego')}">${escapeHtml(game.title || 'Juego')}</div>
+                <div class="game-result-price">Oferta: ${formatMoney(parseFloat(game.currentPrice || 0))} · PVP: ${formatMoney(parseFloat(game.normalPrice || 0))}</div>
+                <div class="game-shelf-meta">${escapeHtml(game.platform || 'N/D')} · ${escapeHtml(game.source || game.provider || 'API')}</div>
                 <button type="button" class="btn btn-sm btn-primary">Añadir</button>
             </div>
         `;
@@ -1088,10 +1114,154 @@ function renderGamingCollection() {
                 <div class="game-shelf-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
                 <div class="game-shelf-price">Actual: ${formatMoney(item.currentPrice || 0)}</div>
                 <div class="game-shelf-price">Histórico: ${formatMoney(item.cheapestEver || 0)}</div>
+                <div class="game-shelf-meta">${escapeHtml(item.platform || 'Plataforma N/D')} · ${escapeHtml(item.region || 'Global')}</div>
+                <div class="game-shelf-meta">${escapeHtml(item.source || 'Manual')}</div>
                 <button type="button" class="btn btn-sm" onclick="removeGameFromCollection('${item.id}')">Quitar</button>
             </div>
         `;
         shelfEl.appendChild(gameCard);
+    });
+}
+
+function normalizeGameTitle(value) {
+    return String(value || '')
+        .normalize('NFKD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/[’'`]/g, '')
+        .replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf\s-]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function buildGameSearchQueries(input) {
+    const cleaned = input.trim();
+    const normalized = normalizeGameTitle(cleaned);
+    const queries = new Set([cleaned, normalized].filter(Boolean));
+
+    if (/\bff\b/i.test(normalized)) queries.add(normalized.replace(/\bff\b/ig, 'final fantasy'));
+    if (/final fantasy/i.test(normalized)) queries.add(normalized.replace(/final fantasy/ig, 'ff'));
+    if (/premium/i.test(normalized)) queries.add(normalized.replace(/premium/ig, 'package'));
+    if (/\bi+\s*ii\b/i.test(normalized)) queries.add(normalized.replace(/\bi+\s*ii\b/i, '1 2'));
+
+    const builtInAlias = BUILTIN_GAME_ALIASES[normalized];
+    if (builtInAlias) builtInAlias.forEach(alias => queries.add(alias));
+
+    const customAlias = appData.gaming.aliases[normalized];
+    if (customAlias) queries.add(customAlias);
+
+    return [...queries].filter(Boolean).slice(0, 6);
+}
+
+function unifyGameResult(item) {
+    const title = item.title || item.external || 'Juego';
+    return {
+        id: `${item.provider}:${item.providerId}`,
+        provider: item.provider,
+        providerId: item.providerId,
+        title,
+        cover: item.cover || '',
+        currentPrice: Number(item.currentPrice || 0),
+        normalPrice: Number(item.normalPrice || 0),
+        cheapestEver: Number(item.cheapestEver || item.currentPrice || 0),
+        platform: item.platform || 'N/D',
+        region: item.region || 'Global',
+        source: item.provider,
+        raw: item.raw || null
+    };
+}
+
+function dedupeGameResults(results) {
+    const byId = new Map();
+    const byTitle = new Map();
+
+    results.forEach(raw => {
+        const item = unifyGameResult(raw);
+        if (!byId.has(item.id)) byId.set(item.id, item);
+    });
+
+    byId.forEach(item => {
+        const key = normalizeGameTitle(item.title);
+        if (!byTitle.has(key)) {
+            byTitle.set(key, item);
+        } else {
+            const existing = byTitle.get(key);
+            const existingScore = (existing.cover ? 1 : 0) + (existing.currentPrice > 0 ? 1 : 0);
+            const candidateScore = (item.cover ? 1 : 0) + (item.currentPrice > 0 ? 1 : 0);
+            if (candidateScore > existingScore) byTitle.set(key, item);
+        }
+    });
+
+    return [...byTitle.values()];
+}
+
+function rankGameResults(results, rawQuery) {
+    const q = normalizeGameTitle(rawQuery);
+    return results.sort((a, b) => {
+        const aTitle = normalizeGameTitle(a.title);
+        const bTitle = normalizeGameTitle(b.title);
+        const aStarts = aTitle.startsWith(q) ? 3 : aTitle.includes(q) ? 2 : 0;
+        const bStarts = bTitle.startsWith(q) ? 3 : bTitle.includes(q) ? 2 : 0;
+        if (aStarts !== bStarts) return bStarts - aStarts;
+
+        const providerBonus = { Steam: 2, CheapShark: 1 };
+        const pa = providerBonus[a.provider] || 0;
+        const pb = providerBonus[b.provider] || 0;
+        if (pa !== pb) return pb - pa;
+
+        return b.currentPrice - a.currentPrice;
+    });
+}
+
+async function searchCheapSharkProvider(queries) {
+    const responses = await Promise.all(
+        queries.map(async (q) => {
+            const res = await fetch(`https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(q)}&limit=20`);
+            if (!res.ok) return [];
+            return await res.json();
+        })
+    );
+
+    return responses.flat().map(game => ({
+        provider: 'CheapShark',
+        providerId: game.gameID,
+        title: game.external,
+        cover: game.thumb,
+        currentPrice: parseFloat(game.salePrice || 0),
+        normalPrice: parseFloat(game.normalPrice || 0),
+        cheapestEver: parseFloat(game.salePrice || 0),
+        platform: 'Multi',
+        region: 'Global',
+        raw: game
+    }));
+}
+
+async function searchSteamProvider(queries) {
+    const responses = await Promise.all(
+        queries.map(async (q) => {
+            const url = `https://store.steampowered.com/api/storesearch?term=${encodeURIComponent(q)}&l=english&cc=es`;
+            const res = await fetch(url);
+            if (!res.ok) return [];
+            const data = await res.json();
+            return Array.isArray(data?.items) ? data.items : [];
+        })
+    );
+
+    return responses.flat().map(game => {
+        const finalPrice = game.price?.final ? game.price.final / 100 : 0;
+        const initialPrice = game.price?.initial ? game.price.initial / 100 : finalPrice;
+        return {
+            provider: 'Steam',
+            providerId: String(game.id),
+            title: game.name,
+            cover: game.tiny_image || '',
+            currentPrice: Number(finalPrice || 0),
+            normalPrice: Number(initialPrice || finalPrice || 0),
+            cheapestEver: Number(finalPrice || 0),
+            platform: 'PC / Steam',
+            region: 'Global',
+            raw: game
+        };
     });
 }
 
@@ -1106,16 +1276,27 @@ window.searchGames = async () => {
         return;
     }
 
-    status.textContent = 'Buscando en CheapShark...';
+    status.textContent = 'Buscando en múltiples fuentes...';
     try {
-        const res = await fetch(`https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(query)}&limit=20`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const results = await res.json();
-        renderGameSearchResults(results || []);
-        status.textContent = results?.length ? `${results.length} resultado(s)` : 'Sin resultados para esa búsqueda.';
+        const queryVariants = buildGameSearchQueries(query);
+        const providerRuns = await Promise.allSettled([
+            searchCheapSharkProvider(queryVariants),
+            searchSteamProvider(queryVariants)
+        ]);
+
+        const providerResults = providerRuns
+            .filter(run => run.status === 'fulfilled')
+            .flatMap(run => run.value);
+
+        const deduped = dedupeGameResults(providerResults);
+        const ranked = rankGameResults(deduped, query).slice(0, 30);
+        renderGameSearchResults(ranked);
+        status.textContent = ranked.length
+            ? `${ranked.length} resultado(s). Si no aparece la edición JP/premium, usa "Añadir manual".`
+            : 'Sin resultados exactos en APIs públicas. Usa "Añadir manual" para ediciones japonesas/premium.';
     } catch (err) {
         console.error('Error buscando juegos:', err);
-        status.textContent = 'No se pudo consultar la API de juegos.';
+        status.textContent = 'No se pudo consultar las APIs de juegos.';
         renderGameSearchResults([]);
     }
 };
@@ -1132,23 +1313,43 @@ async function fetchGameDetails(gameId) {
 
 window.addGameToCollection = async (game) => {
     const status = document.getElementById('game-search-status');
-    if (appData.gaming.items.some(item => item.id === game.gameID)) {
+    const sourceId = game.id || `${game.provider}:${game.providerId || game.gameID}`;
+    const normIncoming = normalizeGameTitle(game.title || game.external || '');
+    if (appData.gaming.items.some(item => item.id === sourceId || normalizeGameTitle(item.title) === normIncoming)) {
         if (status) status.textContent = 'Ese juego ya está en tu colección.';
         return;
     }
 
     if (status) status.textContent = 'Añadiendo juego y cargando metadatos...';
-    const details = await fetchGameDetails(game.gameID);
-
-    const normalized = {
-        id: game.gameID,
-        title: details?.info?.title || game.external || 'Juego',
-        cover: details?.info?.thumb || game.thumb || '',
-        currentPrice: parseFloat(game.salePrice || details?.deals?.[0]?.price || 0),
-        normalPrice: parseFloat(game.normalPrice || details?.deals?.[0]?.retailPrice || 0),
-        cheapestEver: parseFloat(details?.cheapestPriceEver?.price || game.salePrice || 0),
-        steamAppID: details?.info?.steamAppID || game.steamAppID || null
-    };
+    let normalized = null;
+    if (game.provider === 'CheapShark') {
+        const details = await fetchGameDetails(game.providerId || game.gameID);
+        normalized = {
+            id: sourceId,
+            title: details?.info?.title || game.title || game.external || 'Juego',
+            cover: details?.info?.thumb || game.cover || game.thumb || '',
+            currentPrice: parseFloat(game.currentPrice || game.salePrice || details?.deals?.[0]?.price || 0),
+            normalPrice: parseFloat(game.normalPrice || details?.deals?.[0]?.retailPrice || 0),
+            cheapestEver: parseFloat(details?.cheapestPriceEver?.price || game.currentPrice || 0),
+            steamAppID: details?.info?.steamAppID || game.steamAppID || null,
+            platform: game.platform || (details?.info?.steamAppID ? 'PC / Steam' : 'Digital'),
+            region: game.region || 'Global',
+            source: 'CheapShark'
+        };
+    } else {
+        normalized = {
+            id: sourceId,
+            title: game.title || game.name || 'Juego',
+            cover: game.cover || game.tiny_image || '',
+            currentPrice: parseFloat(game.currentPrice || 0),
+            normalPrice: parseFloat(game.normalPrice || game.currentPrice || 0),
+            cheapestEver: parseFloat(game.cheapestEver || game.currentPrice || 0),
+            steamAppID: game.providerId || game.id || null,
+            platform: game.platform || 'PC / Steam',
+            region: game.region || 'Global',
+            source: game.provider || 'Steam'
+        };
+    }
 
     appData.gaming.items.unshift(normalized);
     renderGamingCollection();
@@ -1160,6 +1361,84 @@ window.removeGameFromCollection = (id) => {
     appData.gaming.items = appData.gaming.items.filter(item => item.id !== id);
     renderGamingCollection();
     saveToDynamo();
+};
+
+window.refreshGamingPrices = async () => {
+    const status = document.getElementById('game-search-status');
+    if (!appData.gaming.items.length) {
+        if (status) status.textContent = 'Tu colección gaming está vacía.';
+        return;
+    }
+
+    if (status) status.textContent = 'Actualizando precios de la colección...';
+    let updated = 0;
+
+    for (const item of appData.gaming.items) {
+        const queries = buildGameSearchQueries(item.title).slice(0, 2);
+        try {
+            const cheap = await searchCheapSharkProvider(queries);
+            const ranked = rankGameResults(dedupeGameResults(cheap), item.title);
+            if (ranked.length) {
+                const top = ranked[0];
+                item.currentPrice = top.currentPrice || item.currentPrice;
+                item.normalPrice = top.normalPrice || item.normalPrice;
+                item.cheapestEver = Math.min(item.cheapestEver || Infinity, top.currentPrice || item.currentPrice);
+                updated++;
+            }
+        } catch {
+            // Silent per-item failure; keep previous price.
+        }
+    }
+
+    renderGamingCollection();
+    saveToDynamo();
+    if (status) status.textContent = `Precios actualizados: ${updated}/${appData.gaming.items.length}.`;
+};
+
+window.toggleManualGamePanel = () => {
+    const panel = document.getElementById('manual-game-panel');
+    if (!panel) return;
+    panel.classList.toggle('hidden');
+};
+
+window.addManualGame = () => {
+    const title = document.getElementById('manual-game-title')?.value.trim();
+    const platform = document.getElementById('manual-game-platform')?.value.trim() || 'N/D';
+    const region = document.getElementById('manual-game-region')?.value.trim() || 'JP';
+    const cover = document.getElementById('manual-game-cover')?.value.trim() || '';
+    const alias = document.getElementById('manual-game-alias')?.value.trim();
+    const priceRaw = document.getElementById('manual-game-price')?.value;
+    const status = document.getElementById('game-search-status');
+    if (!title) {
+        if (status) status.textContent = 'Para añadir manual, el título es obligatorio.';
+        return;
+    }
+
+    const item = {
+        id: `manual-${Date.now()}`,
+        title,
+        cover,
+        currentPrice: parseFloat(priceRaw || 0),
+        normalPrice: parseFloat(priceRaw || 0),
+        cheapestEver: parseFloat(priceRaw || 0),
+        steamAppID: null,
+        platform,
+        region,
+        source: 'Manual'
+    };
+
+    appData.gaming.items.unshift(item);
+    if (alias) {
+        appData.gaming.aliases[normalizeGameTitle(alias)] = normalizeGameTitle(title);
+    }
+    renderGamingCollection();
+    saveToDynamo();
+    if (status) status.textContent = `"${title}" añadido manualmente.`;
+
+    ['manual-game-title', 'manual-game-platform', 'manual-game-region', 'manual-game-cover', 'manual-game-price', 'manual-game-alias'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
 };
 
 window.toggleExpand = (id) => {
