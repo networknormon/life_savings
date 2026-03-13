@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pokemon Virtual Binder</title>
+    <meta name="description" content="Virtual binder con un hueco por cada Pokemon y seleccion de cartas con precio.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="pokemon-binder.css">
+    <link rel="manifest" href="manifest.json">
+
+    <script>
+        const hash = window.location.hash;
+        let idToken = localStorage.getItem('cognito_id_token');
+
+        if (hash.includes('id_token=')) {
+            const urlParams = new URLSearchParams(hash.replace('#', '?'));
+            idToken = urlParams.get('id_token');
+            localStorage.setItem('cognito_id_token', idToken);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        if (!idToken) {
+            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+        }
+
+        function logout() {
+            localStorage.removeItem('cognito_id_token');
+            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+        }
+    </script>
+</head>
+<body>
+    <div class="binder-orb binder-orb-a" aria-hidden="true"></div>
+    <div class="binder-orb binder-orb-b" aria-hidden="true"></div>
+
+    <header class="binder-topbar">
+        <div class="binder-container binder-topbar-inner">
+            <div class="binder-brand">
+                <span class="binder-ball" aria-hidden="true"></span>
+                <div>
+                    <h1>Pokemon Virtual Binder</h1>
+                    <p>Un hueco por especie, una carta elegida por Pokemon.</p>
+                </div>
+            </div>
+            <div class="binder-top-actions">
+                <a href="index.html" class="binder-btn binder-btn-ghost">Volver</a>
+                <button type="button" class="binder-btn binder-btn-danger" onclick="logout()">Salir</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="binder-container binder-main">
+        <section class="binder-hero">
+            <div class="binder-hero-copy">
+                <p class="binder-kicker">Coleccion Pokemon</p>
+                <h2>Binder nacional con seleccion de carta y precio en EUR</h2>
+                <p class="binder-muted">Los huecos salen de PokéAPI y las cartas/precios se consultan en Pokemon TCG API usando el campo de Cardmarket.</p>
+            </div>
+            <div class="binder-summary">
+                <article class="binder-stat">
+                    <span>Huecos totales</span>
+                    <strong id="binder-total-count">0</strong>
+                </article>
+                <article class="binder-stat">
+                    <span>Cartas asignadas</span>
+                    <strong id="binder-filled-count">0</strong>
+                </article>
+                <article class="binder-stat">
+                    <span>Pagina actual</span>
+                    <strong id="binder-page-label">1 / 1</strong>
+                </article>
+            </div>
+        </section>
+
+        <section class="binder-controls cardish">
+            <div class="binder-controls-row">
+                <div class="binder-search-wrap">
+                    <input type="text" id="binder-jump-input" class="binder-input" placeholder="Busca por nombre o numero de Pokedex">
+                    <button type="button" class="binder-btn binder-btn-primary" onclick="jumpToPokemon()">Ir</button>
+                </div>
+                <div class="binder-page-nav">
+                    <button type="button" class="binder-btn binder-btn-ghost" onclick="changeBinderPage(-1)">Anterior</button>
+                    <span id="binder-page-range" class="binder-page-range">#1 - #12</span>
+                    <button type="button" class="binder-btn binder-btn-ghost" onclick="changeBinderPage(1)">Siguiente</button>
+                </div>
+            </div>
+            <div id="binder-status" class="binder-status" aria-live="polite">Cargando binder...</div>
+        </section>
+
+        <section class="binder-board cardish">
+            <div id="binder-grid" class="binder-grid"></div>
+        </section>
+    </main>
+
+    <div id="pokemon-modal" class="binder-modal hidden" aria-hidden="true">
+        <div class="binder-modal-card" role="dialog" aria-modal="true" aria-labelledby="pokemon-modal-title">
+            <button type="button" class="binder-close-btn" onclick="closePokemonModal()" aria-label="Cerrar">✕</button>
+            <div class="binder-modal-header">
+                <div>
+                    <p class="binder-kicker" id="pokemon-modal-dex">#0000</p>
+                    <h3 id="pokemon-modal-title">Pokemon</h3>
+                    <p id="pokemon-modal-subtitle" class="binder-muted">Sin carta asignada</p>
+                </div>
+                <div class="binder-modal-actions">
+                    <button type="button" id="pokemon-remove-btn" class="binder-btn binder-btn-ghost">Quitar carta</button>
+                </div>
+            </div>
+
+            <div class="binder-modal-layout">
+                <aside class="binder-selected-panel">
+                    <div id="pokemon-selected-preview" class="binder-selected-preview empty">
+                        <span>Sin carta elegida</span>
+                    </div>
+                </aside>
+
+                <section class="binder-results-panel">
+                    <div class="binder-results-header">
+                        <h4>Cartas disponibles</h4>
+                        <span id="pokemon-results-status" class="binder-muted">Cargando...</span>
+                    </div>
+                    <div id="pokemon-card-results" class="pokemon-card-results"></div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(() => {});
+            });
+        }
+    </script>
+    <script src="pokemon-binder.js"></script>
+</body>
+</html>

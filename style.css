@@ -189,6 +189,46 @@ img {
     gap: 0.8rem;
 }
 
+.portal-links {
+    display: grid;
+    gap: 0.8rem;
+}
+
+.portal-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    text-decoration: none;
+    color: inherit;
+    border-color: rgba(255, 112, 67, 0.35);
+    background:
+        radial-gradient(circle at top right, rgba(255, 204, 128, 0.2), transparent 35%),
+        linear-gradient(135deg, rgba(36, 65, 94, 0.96), rgba(19, 34, 56, 0.98));
+}
+
+.portal-link:hover {
+    border-color: rgba(255, 204, 128, 0.55);
+}
+
+.portal-kicker {
+    color: #ffcb8f;
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 0.3rem;
+}
+
+.portal-card h2 {
+    font-size: 1.15rem;
+}
+
+.portal-card span {
+    display: block;
+    margin-top: 0.2rem;
+    color: var(--text-muted);
+}
+
 .stat-card {
     padding: 0.95rem 1rem;
     border-radius: 0.95rem;

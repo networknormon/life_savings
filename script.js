@@ -333,19 +333,20 @@ function saveToDynamo() {
 
     const params = {
         TableName: 'ColeccionesData',
-        Item: {
-            userId: dbUserId,
-            collectionsData: JSON.stringify(collectionsToSave),
-            finances: {
+        Key: { userId: dbUserId },
+        UpdateExpression: 'SET collectionsData = :collectionsData, finances = :finances, lastUpdated = :lastUpdated',
+        ExpressionAttributeValues: {
+            ':collectionsData': JSON.stringify(collectionsToSave),
+            ':finances': {
                 globalSavings: appData.globalSavings,
                 monthlyData: appData.monthlyData,
                 gamingCollection: appData.gaming.items,
                 gamingAliases: appData.gaming.aliases
             },
-            lastUpdated: new Date().toISOString()
+            ':lastUpdated': new Date().toISOString()
         }
     };
-    docClient.put(params, (err, data) => {
+    docClient.update(params, (err, data) => {
         if (err) console.error("Error subiendo datos:", err);
         else {
             console.log("Datos guardados en la nube ☁️");
