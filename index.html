@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260313d">
 
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d2b45">
@@ -27,13 +27,35 @@
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
-        if (!idToken) {
-            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+        function decodeTokenExpiry(token) {
+            try {
+                const payload = token.split('.')[1]
+                    .replace(/-/g, '+')
+                    .replace(/_/g, '/');
+                const decoded = JSON.parse(atob(payload));
+                return Number(decoded.exp || 0);
+            } catch {
+                return 0;
+            }
         }
+
+        window.appSession = {
+            loginUrl: 'https://networknormon.github.io/life_savings/login.html',
+            hasToken: Boolean(idToken),
+            expiresAt: decodeTokenExpiry(idToken),
+            isExpired: false
+        };
+        window.appSession.isExpired = window.appSession.expiresAt
+            ? Math.floor(Date.now() / 1000) >= window.appSession.expiresAt
+            : false;
 
         function logout() {
             localStorage.removeItem('cognito_id_token');
-            window.location.href = 'https://networknormon.github.io/life_savings/login.html';
+            window.location.href = window.appSession.loginUrl;
+        }
+
+        function reconnectSession() {
+            window.location.href = window.appSession.loginUrl;
         }
     </script>
 </head>
@@ -55,6 +77,7 @@
                 <span class="badge warning" id="global-missing-count" aria-live="polite">Calculando...</span>
                 <span class="badge info" id="header-magic-remaining">Magic: €0.00</span>
                 <span class="badge neutral" id="header-month-budget">Hobby mes: €0.00</span>
+                <span class="badge neutral" id="session-sync-badge">Sincronización local</span>
                 <div id="header-action-slot" class="header-action-slot" aria-label="acciones rápidas"></div>
                 <button type="button" onclick="logout()" class="btn btn-danger btn-sm">Salir</button>
             </div>
@@ -62,6 +85,109 @@
     </header>
 
     <main class="container app-shell">
+        <section id="session-banner" class="session-banner hidden" aria-live="polite"></section>
+
+        <section class="dashboard-shell" aria-label="dashboard principal">
+            <article class="card dashboard-hero-card">
+                <div class="dashboard-copy">
+                    <p class="dashboard-kicker">Dashboard central</p>
+                    <h2>Finanzas, colecciones y objetivos en una sola portada.</h2>
+                    <p id="dashboard-headline" class="dashboard-headline">Calculando tu hoja de ruta del mes...</p>
+                </div>
+                <div class="dashboard-actions">
+                    <div class="dashboard-search">
+                        <input type="text" id="global-search-input" class="dashboard-search-input" placeholder="Busca mangas, juegos, cartas, gastos o Pokemon">
+                        <button type="button" class="btn btn-primary" onclick="runGlobalSearch()">Buscar</button>
+                        <button type="button" class="btn" onclick="clearGlobalSearch()">Limpiar</button>
+                    </div>
+                    <div class="dashboard-tool-row">
+                        <button type="button" class="btn" onclick="exportDataJson()">Exportar JSON</button>
+                        <button type="button" class="btn" onclick="triggerImportDataJson()">Importar JSON</button>
+                        <button type="button" class="btn" onclick="reconnectSession()">Reconectar</button>
+                        <input type="file" id="import-json-input" accept="application/json" hidden>
+                    </div>
+                    <div id="global-search-results" class="global-search-results"></div>
+                </div>
+            </article>
+
+            <article class="card today-card">
+                <div class="today-header">
+                    <div>
+                        <p class="dashboard-kicker">Qué toca hoy</p>
+                        <h3>Tu panel de decisiones rápidas</h3>
+                    </div>
+                    <span id="today-sync-state" class="today-sync-state">Modo local</span>
+                </div>
+                <div class="today-grid">
+                    <article class="today-stat">
+                        <span>Disponible para hobby</span>
+                        <strong id="today-spend">€0.00</strong>
+                        <p id="today-spend-note">En cuanto carguen los datos te digo cuánto puedes usar.</p>
+                    </article>
+                    <article class="today-stat">
+                        <span>Colección prioritaria</span>
+                        <strong id="today-collection">Sin datos</strong>
+                        <p id="today-collection-note">Mirando la próxima compra lógica.</p>
+                    </article>
+                    <article class="today-stat">
+                        <span>Juego o carta más cerca</span>
+                        <strong id="today-nearest">Sin datos</strong>
+                        <p id="today-nearest-note">Buscando el siguiente objetivo alcanzable.</p>
+                    </article>
+                </div>
+            </article>
+        </section>
+
+        <section class="module-grid" aria-label="módulos principales">
+            <article class="module-card module-finance">
+                <div class="module-copy">
+                    <p class="module-kicker">Módulo</p>
+                    <h3>Finanzas</h3>
+                    <p id="module-finance-copy">Ingresos, gasto y ahorro del mes.</p>
+                </div>
+                <div class="module-footer">
+                    <strong id="module-finance-stat">€0.00</strong>
+                    <button type="button" class="btn btn-sm" onclick="scrollToSection('finance-section')">Abrir</button>
+                </div>
+            </article>
+
+            <article class="module-card module-manga">
+                <div class="module-copy">
+                    <p class="module-kicker">Módulo</p>
+                    <h3>Manga</h3>
+                    <p id="module-manga-copy">Tomos pendientes y progreso real.</p>
+                </div>
+                <div class="module-footer">
+                    <strong id="module-manga-stat">0 pendientes</strong>
+                    <button type="button" class="btn btn-sm" onclick="scrollToSection('collections-section')">Abrir</button>
+                </div>
+            </article>
+
+            <article class="module-card module-gaming">
+                <div class="module-copy">
+                    <p class="module-kicker">Módulo</p>
+                    <h3>Gaming</h3>
+                    <p id="module-gaming-copy">Tu shelf y las oportunidades activas.</p>
+                </div>
+                <div class="module-footer">
+                    <strong id="module-gaming-stat">0 juegos</strong>
+                    <button type="button" class="btn btn-sm" onclick="scrollToSection('gaming-section')">Abrir</button>
+                </div>
+            </article>
+
+            <article class="module-card module-pokemon">
+                <div class="module-copy">
+                    <p class="module-kicker">Módulo</p>
+                    <h3>Pokemon Binder</h3>
+                    <p id="module-pokemon-copy">Huecos asignados y acceso directo al binder.</p>
+                </div>
+                <div class="module-footer">
+                    <strong id="module-pokemon-stat">0 cartas</strong>
+                    <a href="pokemon-binder.html?v=20260313d" class="btn btn-sm">Entrar</a>
+                </div>
+            </article>
+        </section>
+
         <section class="quick-stats" aria-label="resumen rápido">
             <article class="stat-card">
                 <p>Ingresos del mes</p>
@@ -82,17 +208,44 @@
         </section>
 
         <section class="portal-links" aria-label="accesos rápidos">
-            <a href="pokemon-binder.html?v=20260313c" class="card portal-card portal-link">
+            <a href="pokemon-binder.html?v=20260313d" class="card portal-card portal-link">
                 <div>
-                    <p class="portal-kicker">Nuevo modulo</p>
+                    <p class="portal-kicker">Modulo separado</p>
                     <h2>Pokemon Virtual Binder</h2>
-                    <span>Abre tu binder y asigna una carta a cada Pokemon</span>
+                    <span>Accede a páginas por Pokédex, generación, tipo o set desde su propia vista</span>
                 </div>
                 <strong>Entrar</strong>
             </a>
         </section>
 
-        <section class="finance-panel" aria-label="panel financiero">
+        <section class="card history-card" aria-label="historial mensual">
+            <div class="history-header">
+                <div>
+                    <p class="dashboard-kicker">Historial visual</p>
+                    <h2>Cómo va este mes frente al anterior</h2>
+                </div>
+                <p id="history-summary" class="history-summary">Preparando comparativa mensual...</p>
+            </div>
+            <div class="history-layout">
+                <div class="history-chart-wrap">
+                    <canvas id="monthly-history-chart" aria-label="Gráfico del historial mensual"></canvas>
+                </div>
+                <div id="history-comparison-grid" class="history-comparison-grid"></div>
+            </div>
+        </section>
+
+        <section class="card notification-card" aria-label="notificaciones suaves">
+            <div class="notification-header">
+                <div>
+                    <p class="dashboard-kicker">Recordatorios suaves</p>
+                    <h2>Señales útiles sin saturarte</h2>
+                </div>
+                <span id="notification-state" class="notification-state">Analizando</span>
+            </div>
+            <div id="notification-feed" class="notification-feed"></div>
+        </section>
+
+        <section id="finance-section" class="finance-panel" aria-label="panel financiero">
             <div class="finance-toolbar card">
                 <h2>📅 Finanzas del Mes</h2>
                 <div class="month-picker" aria-label="selector de fecha">
@@ -180,12 +333,12 @@
             </div>
         </section>
 
-        <section>
+        <section id="collections-section">
             <h2 class="section-title">Colecciones</h2>
             <div id="collections-container" class="collections-grid"></div>
         </section>
 
-        <section class="gaming-section">
+        <section id="gaming-section" class="gaming-section">
             <div class="gaming-header">
                 <h2 class="section-title">Gaming Collection</h2>
                 <p class="gaming-subtitle">Busca y añade juegos con portada y precio en tiempo real</p>
@@ -229,13 +382,13 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js')
+                navigator.serviceWorker.register('sw.js?v=20260313d')
                     .then(reg => console.log('Service Worker registrado', reg))
                     .catch(err => console.log('Fallo al registrar Service Worker', err));
             });
         }
     </script>
 
-    <script src="script.js"></script>
+    <script src="script.js?v=20260313d"></script>
 </body>
 </html>

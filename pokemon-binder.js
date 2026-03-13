@@ -1,43 +1,58 @@
 const POKE_API_SPECIES_URL = 'https://pokeapi.co/api/v2/pokemon-species?limit=2000';
+const POKE_API_TYPE_URL = 'https://pokeapi.co/api/v2/type';
 const TCGDEX_CARD_LIST_URL = 'https://api.tcgdex.net/v2/en/cards';
 const TCGDEX_CARD_URL = 'https://api.tcgdex.net/v2/en/cards';
 const REGION = 'eu-north-1';
 const USER_POOL_ID = 'eu-north-1_HT76kHw12';
 const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
 const NATIONAL_DEX_TOTAL = 1025;
+const BINDER_VERSION = '20260313d';
+const BINDER_GENERATIONS = [
+    { id: 'gen1', label: 'Generacion I', start: 1, end: 151 },
+    { id: 'gen2', label: 'Generacion II', start: 152, end: 251 },
+    { id: 'gen3', label: 'Generacion III', start: 252, end: 386 },
+    { id: 'gen4', label: 'Generacion IV', start: 387, end: 493 },
+    { id: 'gen5', label: 'Generacion V', start: 494, end: 649 },
+    { id: 'gen6', label: 'Generacion VI', start: 650, end: 721 },
+    { id: 'gen7', label: 'Generacion VII', start: 722, end: 809 },
+    { id: 'gen8', label: 'Generacion VIII', start: 810, end: 905 },
+    { id: 'gen9', label: 'Generacion IX', start: 906, end: NATIONAL_DEX_TOTAL }
+];
 
 const binderState = {
     species: [],
     entries: {},
     currentPage: 1,
-    pageSize: 12,
+    pageSize: 24,
     selectedSpeciesId: null,
     searchCache: {},
     dbUserId: null,
     highlightedSpeciesId: null,
-    cloudSyncEnabled: true
+    cloudSyncEnabled: true,
+    viewMode: 'national',
+    generation: 'all',
+    type: 'all',
+    set: 'all',
+    typeSpeciesCache: {},
+    pendingSpeciesId: null,
+    pendingSync: false
 };
 
 const binderStorageKeys = {
     species: 'pokemon-binder-species-v1',
     entries: 'pokemon-binder-entries-v1',
-    cardCache: 'pokemon-binder-card-cache-v2'
+    cardCache: 'pokemon-binder-card-cache-v2',
+    pendingSync: 'pokemon-binder-pending-sync-v1'
 };
 
 AWS.config.region = REGION;
-AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-    IdentityPoolId: IDENTITY_POOL_ID,
-    Logins: {
-        [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: localStorage.getItem('cognito_id_token')
-    }
-});
-
 const docClient = new AWS.DynamoDB.DocumentClient();
 
 document.addEventListener('DOMContentLoaded', () => {
     const jumpInput = document.getElementById('binder-jump-input');
     const modal = document.getElementById('pokemon-modal');
     const removeBtn = document.getElementById('pokemon-remove-btn');
+    const generationSelect = document.getElementById('binder-generation-select');
 
     if (jumpInput) {
         jumpInput.addEventListener('keydown', (ev) => {
@@ -59,19 +74,120 @@ document.addEventListener('DOMContentLoaded', () => {
             if (binderState.selectedSpeciesId) removePokemonCard(binderState.selectedSpeciesId);
         });
     }
+
+    if (generationSelect && !generationSelect.querySelector('[value="gen1"]')) {
+        generationSelect.innerHTML += BINDER_GENERATIONS
+            .map((generation) => `<option value="${generation.id}">${generation.label}</option>`)
+            .join('');
+    }
+
+    const routeSpecies = Number(new URL(window.location.href).searchParams.get('species') || 0);
+    binderState.pendingSpeciesId = routeSpecies || null;
+
+    window.addEventListener('online', () => {
+        setBinderStatus('Conexion recuperada. Intentando reactivar la nube del binder...');
+        initializeBinderSession();
+    });
+
+    window.addEventListener('offline', () => {
+        binderState.cloudSyncEnabled = false;
+        updateBinderSessionUI('Sin conexion. El binder sigue guardando cambios en este navegador.');
+    });
+
+    initializeBinderSession();
 });
 
-AWS.config.credentials.get(async (err) => {
-    if (err) {
+function getBinderToken() {
+    return localStorage.getItem('cognito_id_token') || '';
+}
+
+function decodeTokenExpiry(token) {
+    if (!token) return 0;
+    try {
+        const payload = token.split('.')[1]
+            .replace(/-/g, '+')
+            .replace(/_/g, '/');
+        return Number(JSON.parse(atob(payload)).exp || 0);
+    } catch {
+        return 0;
+    }
+}
+
+function isBinderTokenExpired(token) {
+    const exp = decodeTokenExpiry(token);
+    return exp ? Math.floor(Date.now() / 1000) >= exp : !token;
+}
+
+function configureBinderCredentials() {
+    const token = getBinderToken();
+    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+        IdentityPoolId: IDENTITY_POOL_ID,
+        Logins: token ? {
+            [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: token
+        } : {}
+    });
+}
+
+function updateBinderSessionUI(message = '') {
+    const banner = document.getElementById('binder-session-banner');
+    const token = getBinderToken();
+    const expired = isBinderTokenExpired(token);
+    let headline = message;
+    let title = 'Modo local';
+
+    if (binderState.cloudSyncEnabled && binderState.dbUserId && navigator.onLine) {
+        title = binderState.pendingSync ? 'Nube activa · pendiente' : 'Nube activa';
+        headline = headline || 'El binder está guardando en local y en Dynamo.';
+    } else if (!navigator.onLine) {
+        headline = headline || 'No hay conexion. Los cambios se quedan guardados localmente.';
+    } else if (!token) {
+        headline = headline || 'No hay sesión activa. Puedes seguir editando el binder y reconectar más tarde.';
+    } else if (expired) {
+        headline = headline || 'La sesión de Cognito ha caducado. El binder sigue funcionando en local.';
+    } else {
+        headline = headline || 'No pude validar la nube ahora mismo. El binder se mantiene en modo local.';
+    }
+
+    if (!banner) return;
+    banner.classList.remove('hidden');
+    banner.innerHTML = `
+        <div class="binder-session-copy">
+            <strong>${title}</strong>
+            <span>${headline}</span>
+        </div>
+        <button type="button" class="binder-btn binder-btn-ghost" onclick="reconnectBinderSession()">Reconectar</button>
+    `;
+}
+
+function initializeBinderSession() {
+    configureBinderCredentials();
+    const token = getBinderToken();
+    const expired = isBinderTokenExpired(token);
+
+    if (!token || expired) {
         binderState.cloudSyncEnabled = false;
-        await loadBinderApp();
-        setBinderStatus('Binder listo en modo local. Vuelve a iniciar sesion para sincronizar en la nube.');
+        binderState.dbUserId = null;
+        loadBinderApp();
+        updateBinderSessionUI();
         return;
     }
 
-    binderState.dbUserId = AWS.config.credentials.identityId;
-    await loadBinderApp();
-});
+    AWS.config.credentials.get(async (err) => {
+        if (err) {
+            binderState.cloudSyncEnabled = false;
+            binderState.dbUserId = null;
+            await loadBinderApp();
+            updateBinderSessionUI('No he podido recuperar la nube del binder. Seguimos en local.');
+            return;
+        }
+
+        binderState.dbUserId = AWS.config.credentials.identityId;
+        binderState.cloudSyncEnabled = true;
+        await loadBinderApp();
+        updateBinderSessionUI('Sesión válida. El binder vuelve a sincronizar con la nube.');
+        flushBinderPendingSync();
+    });
+}
 
 function setBinderStatus(text) {
     const statusEl = document.getElementById('binder-status');
@@ -141,12 +257,47 @@ function sanitizeSpeciesList(items) {
         .sort((a, b) => a.id - b.id);
 }
 
+function getVisibleSpecies() {
+    let visible = [...binderState.species];
+
+    if (binderState.viewMode === 'generation' && binderState.generation !== 'all') {
+        const generation = BINDER_GENERATIONS.find((item) => item.id === binderState.generation);
+        if (generation) {
+            visible = visible.filter((species) => species.id >= generation.start && species.id <= generation.end);
+        }
+    }
+
+    if (binderState.viewMode === 'type' && binderState.type !== 'all') {
+        const allowedIds = new Set(binderState.typeSpeciesCache[binderState.type] || []);
+        visible = visible.filter((species) => allowedIds.has(species.id));
+    }
+
+    if (binderState.viewMode === 'set' && binderState.set !== 'all') {
+        visible = visible.filter((species) => binderState.entries[String(species.id)]?.setName === binderState.set);
+    }
+
+    return visible;
+}
+
 function getTotalPages() {
-    return Math.max(1, Math.ceil(binderState.species.length / binderState.pageSize));
+    return Math.max(1, Math.ceil(getVisibleSpecies().length / binderState.pageSize));
 }
 
 function getSpeciesById(speciesId) {
     return binderState.species.find((item) => item.id === speciesId) || null;
+}
+
+function getCurrentViewLabel() {
+    if (binderState.viewMode === 'generation') {
+        return BINDER_GENERATIONS.find((item) => item.id === binderState.generation)?.label || 'Generacion';
+    }
+    if (binderState.viewMode === 'type') {
+        return binderState.type === 'all' ? 'Todos los tipos' : `Tipo ${formatSpeciesName(binderState.type)}`;
+    }
+    if (binderState.viewMode === 'set') {
+        return binderState.set === 'all' ? 'Todos los sets' : binderState.set;
+    }
+    return 'Pokedex';
 }
 
 function getPriceFromCard(card) {
@@ -179,12 +330,43 @@ function getCardImage(card, quality = 'low') {
     return buildTcgdexImageUrl(directImage, quality, 'webp');
 }
 
+function getCardImageFallback(card, quality = 'low') {
+    const directImage = card.image || card.imageUrl || card.images?.small || '';
+    return buildTcgdexImageUrl(directImage, quality, 'png');
+}
+
 function normalizeStoredEntryImage(imageUrl, quality = 'low') {
     return buildTcgdexImageUrl(imageUrl, quality, 'webp');
 }
 
 function persistEntriesBackup() {
     localStorage.setItem(binderStorageKeys.entries, JSON.stringify(binderState.entries));
+}
+
+function queueBinderPendingSync() {
+    binderState.pendingSync = true;
+    localStorage.setItem(binderStorageKeys.pendingSync, JSON.stringify({
+        entries: binderState.entries,
+        updatedAt: new Date().toISOString()
+    }));
+    updateBinderSessionUI();
+}
+
+function clearBinderPendingSync() {
+    binderState.pendingSync = false;
+    localStorage.removeItem(binderStorageKeys.pendingSync);
+    updateBinderSessionUI();
+}
+
+function getBinderPendingSync() {
+    try {
+        const raw = localStorage.getItem(binderStorageKeys.pendingSync);
+        if (!raw) return null;
+        binderState.pendingSync = true;
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
 }
 
 function loadCardCache() {
@@ -211,18 +393,22 @@ async function loadBinderApp() {
 
         binderState.species = species;
         binderState.entries = entries;
+        binderState.pendingSync = Boolean(getBinderPendingSync());
         renderBinder();
         setBinderStatus(
             binderState.cloudSyncEnabled
                 ? 'Binder listo. Elige un Pokemon para asignarle una carta.'
                 : 'Binder listo en modo local. Elige un Pokemon para asignarle una carta.'
         );
+        updateBinderSessionUI();
+        applyPendingSpeciesFocus();
     } catch (error) {
         console.error('Binder boot error:', error);
         binderState.species = [];
         binderState.entries = loadEntriesFromBackup();
         renderBinder();
         setBinderStatus('No se pudo cargar el binder completo.');
+        updateBinderSessionUI('No he podido cargar todas las fuentes del binder.');
     }
 }
 
@@ -291,9 +477,10 @@ function saveBinderEntries() {
     persistEntriesBackup();
 
     return new Promise((resolve) => {
-        if (!binderState.dbUserId) {
+        if (!binderState.dbUserId || !binderState.cloudSyncEnabled || !navigator.onLine) {
+            queueBinderPendingSync();
             showBinderToast('Binder guardado localmente');
-            setBinderStatus('Cambios guardados en este navegador. La nube esta desactivada hasta que inicies sesion de nuevo.');
+            setBinderStatus('Cambios guardados en este navegador. La nube esta desactivada o sin conexion.');
             resolve();
             return;
         }
@@ -311,8 +498,10 @@ function saveBinderEntries() {
             (err) => {
                 if (err) {
                     console.error('Pokemon binder save error:', err);
+                    queueBinderPendingSync();
                     setBinderStatus('Guardado local hecho, pero fallo el guardado en la nube.');
                 } else {
+                    clearBinderPendingSync();
                     showBinderToast('Binder guardado');
                     setBinderStatus('Cambios guardados.');
                 }
@@ -322,13 +511,45 @@ function saveBinderEntries() {
     });
 }
 
+function flushBinderPendingSync() {
+    const pending = getBinderPendingSync();
+    if (!pending || !binderState.dbUserId || !binderState.cloudSyncEnabled || !navigator.onLine) return;
+
+    docClient.update(
+        {
+            TableName: 'ColeccionesData',
+            Key: { userId: binderState.dbUserId },
+            UpdateExpression: 'SET pokemonBinder = :pokemonBinder, lastUpdated = :lastUpdated',
+            ExpressionAttributeValues: {
+                ':pokemonBinder': pending.entries || binderState.entries,
+                ':lastUpdated': new Date().toISOString()
+            }
+        },
+        (err) => {
+            if (err) {
+                console.error('Pokemon binder flush error:', err);
+                updateBinderSessionUI('La nube del binder sigue fallando. Mantengo la cola local.');
+                return;
+            }
+
+            clearBinderPendingSync();
+            showBinderToast('Binder sincronizado con la nube');
+            updateBinderSessionUI('La cola local del binder ya se ha sincronizado.');
+        }
+    );
+}
+
 function renderBinder() {
+    binderState.currentPage = Math.min(getTotalPages(), Math.max(1, binderState.currentPage));
+    renderBinderControlState();
+    renderSetOptions();
     renderBinderSummary();
     renderBinderGrid();
 }
 
 function renderBinderSummary() {
-    const totalSlots = Math.min(binderState.species.length, NATIONAL_DEX_TOTAL);
+    const visibleSpecies = getVisibleSpecies();
+    const totalSlots = Math.min(visibleSpecies.length, NATIONAL_DEX_TOTAL);
     const filledSlots = Object.keys(binderState.entries).length;
     const totalPages = getTotalPages();
     const pageStart = totalSlots ? ((binderState.currentPage - 1) * binderState.pageSize) + 1 : 0;
@@ -338,6 +559,7 @@ function renderBinderSummary() {
     document.getElementById('binder-filled-count').textContent = String(filledSlots);
     document.getElementById('binder-page-label').textContent = `${binderState.currentPage} / ${totalPages}`;
     document.getElementById('binder-page-range').textContent = totalSlots ? `#${pageStart} - #${pageEnd}` : 'Sin datos';
+    document.getElementById('binder-view-label').textContent = getCurrentViewLabel();
 }
 
 function renderBinderGrid() {
@@ -345,13 +567,15 @@ function renderBinderGrid() {
     if (!grid) return;
 
     grid.innerHTML = '';
-    if (!binderState.species.length) {
+    const visibleSpecies = getVisibleSpecies();
+
+    if (!visibleSpecies.length) {
         grid.innerHTML = '<div class="binder-muted">No hay especies cargadas todavia.</div>';
         return;
     }
 
     const start = (binderState.currentPage - 1) * binderState.pageSize;
-    const pageSpecies = binderState.species.slice(start, start + binderState.pageSize);
+    const pageSpecies = visibleSpecies.slice(start, start + binderState.pageSize);
 
     pageSpecies.forEach((species) => {
         const entry = binderState.entries[String(species.id)];
@@ -360,7 +584,7 @@ function renderBinderGrid() {
         slot.className = `binder-slot${binderState.highlightedSpeciesId === species.id ? ' highlighted' : ''}`;
         slot.innerHTML = `
             <div class="binder-pocket">
-                ${slotImage ? `<img class="binder-card-image" src="${slotImage}" alt="${entry.cardName}">` : ''}
+                ${slotImage ? `<img class="binder-card-image" src="${slotImage}" alt="${entry.cardName}" onerror="this.onerror=null; this.src='${normalizeStoredEntryImage(entry.imageSmall, 'low').replace('.webp', '.png')}'">` : ''}
             </div>
             <div class="binder-slot-footer">
                 <div class="binder-slot-title">
@@ -404,9 +628,126 @@ function jumpToPokemon() {
 
     binderState.currentPage = Math.floor((target.id - 1) / binderState.pageSize) + 1;
     binderState.highlightedSpeciesId = target.id;
+    binderState.viewMode = 'national';
     renderBinder();
     setBinderStatus(`Saltando a ${formatSpeciesName(target.name)}.`);
 }
+
+function applyPendingSpeciesFocus() {
+    if (!binderState.pendingSpeciesId) return;
+    const target = getSpeciesById(binderState.pendingSpeciesId);
+    if (!target) return;
+    binderState.viewMode = 'national';
+    binderState.currentPage = Math.floor((target.id - 1) / binderState.pageSize) + 1;
+    binderState.highlightedSpeciesId = target.id;
+    renderBinder();
+    binderState.pendingSpeciesId = null;
+}
+
+function renderSetOptions() {
+    const select = document.getElementById('binder-set-select');
+    if (!select) return;
+
+    const sets = [...new Set(
+        Object.values(binderState.entries)
+            .map((entry) => entry.setName)
+            .filter(Boolean)
+    )].sort((a, b) => a.localeCompare(b));
+
+    const current = binderState.set;
+    select.innerHTML = '<option value="all">Todos los sets</option>' +
+        sets.map((setName) => `<option value="${setName}">${setName}</option>`).join('');
+    select.value = sets.includes(current) ? current : 'all';
+    if (!sets.includes(current)) binderState.set = select.value;
+}
+
+function renderBinderControlState() {
+    const viewMode = document.getElementById('binder-view-mode');
+    const generation = document.getElementById('binder-generation-select');
+    const type = document.getElementById('binder-type-select');
+    const set = document.getElementById('binder-set-select');
+    const pageSize = document.getElementById('binder-page-size-select');
+
+    if (viewMode) viewMode.value = binderState.viewMode;
+    if (generation) {
+        generation.value = binderState.generation;
+        generation.disabled = binderState.viewMode !== 'generation';
+    }
+    if (type) {
+        type.value = binderState.type;
+        type.disabled = binderState.viewMode !== 'type';
+    }
+    if (set) {
+        set.value = binderState.set;
+        set.disabled = binderState.viewMode !== 'set';
+    }
+    if (pageSize) pageSize.value = String(binderState.pageSize);
+}
+
+async function ensureTypeSpeciesCache(typeName) {
+    if (!typeName || typeName === 'all' || binderState.typeSpeciesCache[typeName]) return;
+
+    const res = await fetch(`${POKE_API_TYPE_URL}/${encodeURIComponent(typeName)}`);
+    if (!res.ok) throw new Error(`PokeAPI type HTTP ${res.status}`);
+    const data = await res.json();
+    const speciesByName = new Map(binderState.species.map((species) => [normalizePokemonName(species.name), species.id]));
+
+    binderState.typeSpeciesCache[typeName] = (data.pokemon || [])
+        .map((entry) => speciesByName.get(normalizePokemonName(entry.pokemon?.name)))
+        .filter(Boolean);
+}
+
+window.setBinderViewMode = async (mode) => {
+    binderState.viewMode = mode || 'national';
+    binderState.currentPage = 1;
+    binderState.highlightedSpeciesId = null;
+
+    if (binderState.viewMode === 'type' && binderState.type !== 'all') {
+        try {
+            await ensureTypeSpeciesCache(binderState.type);
+        } catch (error) {
+            console.warn('Binder type filter error:', error);
+            setBinderStatus('No pude cargar ese tipo Pokemon.');
+        }
+    }
+
+    renderBinder();
+};
+
+window.setBinderGeneration = (value) => {
+    binderState.generation = value || 'all';
+    binderState.currentPage = 1;
+    renderBinder();
+};
+
+window.setBinderType = async (value) => {
+    binderState.type = value || 'all';
+    binderState.currentPage = 1;
+
+    if (binderState.type !== 'all') {
+        try {
+            await ensureTypeSpeciesCache(binderState.type);
+        } catch (error) {
+            console.warn('Binder type filter error:', error);
+            setBinderStatus('No pude cargar el listado de este tipo.');
+        }
+    }
+
+    renderBinder();
+};
+
+window.setBinderSet = (value) => {
+    binderState.set = value || 'all';
+    binderState.currentPage = 1;
+    renderBinder();
+};
+
+window.setBinderPageSize = (value) => {
+    const nextSize = Number(value || 24);
+    binderState.pageSize = [12, 24, 48].includes(nextSize) ? nextSize : 24;
+    binderState.currentPage = 1;
+    renderBinder();
+};
 
 function openPokemonModal(speciesId) {
     binderState.selectedSpeciesId = speciesId;
@@ -450,7 +791,7 @@ function renderPokemonModal() {
 
         if (previewImage) {
             preview.classList.remove('empty');
-            preview.innerHTML = `<img src="${previewImage}" alt="${entry.cardName}">`;
+            preview.innerHTML = `<img src="${previewImage}" alt="${entry.cardName}" onerror="this.onerror=null; this.src='${previewImage.replace('.webp', '.png')}'">`;
         } else {
             preview.classList.add('empty');
             preview.innerHTML = '<span>Sin carta elegida</span>';
@@ -563,7 +904,7 @@ function renderPokemonCardResults(cards) {
         const article = document.createElement('article');
         article.className = 'pokemon-card-result';
         article.innerHTML = `
-            <img src="${getCardImage(card, 'low')}" alt="${card.name}">
+            <img src="${getCardImage(card, 'low')}" alt="${card.name}" onerror="this.onerror=null; this.src='${getCardImageFallback(card, 'low')}'">
             <div class="pokemon-card-copy">
                 <div class="pokemon-card-name">${card.name}</div>
                 <div class="pokemon-card-meta">${card.set?.name || 'Set N/D'} · #${card.localId || '--'}</div>

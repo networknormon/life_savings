@@ -1,8 +1,22 @@
 // --- CARGA DINÁMICA DE CHART.JS ---
 const chartScript = document.createElement('script');
 chartScript.src = "https://cdn.jsdelivr.net/npm/chart.js";
-chartScript.onload = () => { if(window.ChartLoadedCallback) window.ChartLoadedCallback(); };
+window.ChartReadyQueue = window.ChartReadyQueue || [];
+chartScript.onload = () => {
+    while (window.ChartReadyQueue.length) {
+        const callback = window.ChartReadyQueue.shift();
+        if (typeof callback === 'function') callback();
+    }
+};
 document.head.appendChild(chartScript);
+
+function onChartReady(callback) {
+    if (typeof window.Chart !== 'undefined') {
+        callback();
+    } else {
+        window.ChartReadyQueue.push(callback);
+    }
+}
 
 // --- DATOS INICIALES Y HELPER ---
 function generateOwned(total, ownedCount) {
@@ -68,10 +82,19 @@ const initialMagicCards = [
 
 const today = new Date();
 const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+const APP_VERSION = '20260313d';
+const LOGIN_URL = window.appSession?.loginUrl || 'https://networknormon.github.io/life_savings/login.html';
+const POKEMON_BINDER_URL = `pokemon-binder.html?v=${APP_VERSION}`;
 const MONTH_NAMES_ES = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
 ];
+const LOCAL_STORAGE_KEYS = {
+    backup: 'life-savings-app-backup-v1',
+    pendingSync: 'life-savings-cloud-pending-v1',
+    binderEntries: 'pokemon-binder-entries-v1',
+    financeSnapshots: 'life-savings-price-snapshots-v1'
+};
 
 let appData = {
     globalSavings: 2100, 
@@ -94,6 +117,14 @@ let appData = {
         items: [],
         aliases: {}
     }
+};
+
+const runtimeState = {
+    cloudSyncEnabled: false,
+    pendingSync: false,
+    bootedFromLocal: false,
+    sessionExpired: Boolean(window.appSession?.isExpired),
+    lastFinanceSummary: null
 };
 
 const mtgViewerState = {
@@ -235,123 +266,370 @@ const USER_POOL_ID = 'eu-north-1_HT76kHw12';
 const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
 
 AWS.config.region = REGION;
-AWS.config.credentials = new AWS.CognitoIdentityCredentials({
-    IdentityPoolId: IDENTITY_POOL_ID,
-    Logins: {
-        [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: localStorage.getItem('cognito_id_token')
-    }
-});
-
 const docClient = new AWS.DynamoDB.DocumentClient();
 let dbUserId = null;
 
-AWS.config.credentials.get((err) => {
-    if (err) {
-        console.error("Error validando token con AWS:", err);
-        return;
-    }
-    dbUserId = AWS.config.credentials.identityId;
-    console.log("Conectado a AWS con ID:", dbUserId);
-    loadDataFromDynamo();
-});
+function getStoredToken() {
+    return localStorage.getItem('cognito_id_token') || '';
+}
 
-function loadDataFromDynamo() {
-    const params = { TableName: 'ColeccionesData', Key: { userId: dbUserId } };
-    docClient.get(params, (err, data) => {
-        if (err) {
-            console.error("Error descargando datos:", err);
-        } else if (data.Item) {
-            console.log("Datos cargados desde la nube ☁️");
-            if (data.Item.collectionsData) {
-                const savedCollections = JSON.parse(data.Item.collectionsData);
-                appData.collections.forEach(col => { 
-                    if(savedCollections[col.id]) {
-                        // MIGRACIÓN: Comprobamos si el guardado es el antiguo (solo un array) o el nuevo (con precios)
-                        if (Array.isArray(savedCollections[col.id])) {
-                            col.ownedList = savedCollections[col.id];
-                        } else {
-                            col.ownedList = savedCollections[col.id].ownedList;
-                            if (col.type === 'cards' && savedCollections[col.id].prices) {
-                                col.items.forEach((item, idx) => {
-                                    item.price = savedCollections[col.id].prices[idx] || item.price;
-                                });
-                            }
-                        }
-                    } 
-                });
-            }
-            if (data.Item.finances) {
-                const dbFin = data.Item.finances;
-                if (dbFin.monthlyData) {
-                    appData.globalSavings = dbFin.globalSavings || 0;
-                    appData.monthlyData = dbFin.monthlyData;
-                    appData.gaming.items = Array.isArray(dbFin.gamingCollection) ? dbFin.gamingCollection : [];
-                    appData.gaming.aliases = dbFin.gamingAliases && typeof dbFin.gamingAliases === 'object' ? dbFin.gamingAliases : {};
-                    if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
-                } else if (dbFin.salary !== undefined) {
-                    appData.globalSavings = dbFin.globalSavings || 0; // CORREGIDA LA INCONGRUENCIA DEL 2100
-                    appData.monthlyData[defaultMonthStr] = {
-                        salary: dbFin.salary || 1084.20,
-                        fixedExpenses: [{ id: Date.now(), name: "General Fijos", amount: dbFin.expenses || 0 }],
-                        variableExpenses: [{ id: Date.now()+1, name: "General Variables", amount: dbFin.variableExpenses || 0 }],
-                        allocation: dbFin.allocation || 30
-                    };
-                    appData.gaming.items = Array.isArray(dbFin.gamingCollection) ? dbFin.gamingCollection : [];
-                    appData.gaming.aliases = dbFin.gamingAliases && typeof dbFin.gamingAliases === 'object' ? dbFin.gamingAliases : {};
-                }
-            }
-            updateAllUI();
+function decodeJwtExpiry(token) {
+    if (!token) return 0;
+    try {
+        const payload = token.split('.')[1]
+            .replace(/-/g, '+')
+            .replace(/_/g, '/');
+        return Number(JSON.parse(atob(payload)).exp || 0);
+    } catch {
+        return 0;
+    }
+}
+
+function isTokenExpired(token) {
+    const exp = decodeJwtExpiry(token);
+    return exp ? Math.floor(Date.now() / 1000) >= exp : !token;
+}
+
+function buildCollectionsSaveObject() {
+    const collectionsToSave = {};
+    appData.collections.forEach((col) => {
+        collectionsToSave[col.id] = {
+            ownedList: col.ownedList,
+            prices: col.type === 'cards' ? col.items.map((item) => item.price) : undefined
+        };
+    });
+    return collectionsToSave;
+}
+
+function buildFinanceSaveObject() {
+    return {
+        globalSavings: appData.globalSavings,
+        savingsGoal: appData.savingsGoal,
+        currentMonth: appData.currentMonth,
+        monthlyData: appData.monthlyData,
+        gamingCollection: appData.gaming.items,
+        gamingAliases: appData.gaming.aliases
+    };
+}
+
+function buildPersistedSnapshot() {
+    return {
+        version: 2,
+        collectionsData: buildCollectionsSaveObject(),
+        finances: buildFinanceSaveObject(),
+        lastUpdated: new Date().toISOString()
+    };
+}
+
+function persistLocalBackup(snapshot = buildPersistedSnapshot()) {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.backup, JSON.stringify(snapshot));
+}
+
+function loadLocalBackup() {
+    try {
+        return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.backup) || 'null');
+    } catch {
+        return null;
+    }
+}
+
+function loadPriceSnapshotState() {
+    try {
+        return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.financeSnapshots) || '{"prices":{},"alerts":[]}');
+    } catch {
+        return { prices: {}, alerts: [] };
+    }
+}
+
+function persistPriceSnapshotState(state) {
+    localStorage.setItem(LOCAL_STORAGE_KEYS.financeSnapshots, JSON.stringify(state));
+}
+
+function trackPriceSnapshot(bucket, key, nextPrice, title) {
+    if (!nextPrice || nextPrice <= 0) return;
+    const state = loadPriceSnapshotState();
+    state.prices[bucket] = state.prices[bucket] || {};
+    const previous = Number(state.prices[bucket][key] || 0);
+
+    if (previous > 0 && nextPrice < previous) {
+        state.alerts = [
+            {
+                id: `${bucket}-${key}-${Date.now()}`,
+                title,
+                previous,
+                next: nextPrice,
+                createdAt: new Date().toISOString()
+            },
+            ...(state.alerts || [])
+        ].slice(0, 12);
+    }
+
+    state.prices[bucket][key] = nextPrice;
+    persistPriceSnapshotState(state);
+}
+
+function queuePendingSync(snapshot = buildPersistedSnapshot()) {
+    runtimeState.pendingSync = true;
+    localStorage.setItem(LOCAL_STORAGE_KEYS.pendingSync, JSON.stringify(snapshot));
+    updateSessionUI();
+}
+
+function clearPendingSync() {
+    runtimeState.pendingSync = false;
+    localStorage.removeItem(LOCAL_STORAGE_KEYS.pendingSync);
+    updateSessionUI();
+}
+
+function getPendingSync() {
+    try {
+        const raw = localStorage.getItem(LOCAL_STORAGE_KEYS.pendingSync);
+        if (!raw) return null;
+        runtimeState.pendingSync = true;
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function applySavedCollections(savedCollections = {}) {
+    appData.collections.forEach((col) => {
+        if (!savedCollections[col.id]) return;
+        if (Array.isArray(savedCollections[col.id])) {
+            col.ownedList = savedCollections[col.id];
+            return;
+        }
+
+        if (Array.isArray(savedCollections[col.id].ownedList)) {
+            col.ownedList = savedCollections[col.id].ownedList;
+        }
+        if (col.type === 'cards' && Array.isArray(savedCollections[col.id].prices)) {
+            col.items.forEach((item, idx) => {
+                item.price = Number(savedCollections[col.id].prices[idx] || item.price);
+            });
         }
     });
 }
 
-function showSaveNotification() {
+function applySavedFinances(finances = {}) {
+    if (!finances || typeof finances !== 'object') return;
+
+    if (finances.savingsGoal) appData.savingsGoal = Number(finances.savingsGoal) || appData.savingsGoal;
+    if (typeof finances.globalSavings === 'number') appData.globalSavings = finances.globalSavings;
+    if (finances.currentMonth) appData.currentMonth = finances.currentMonth;
+
+    if (finances.monthlyData && typeof finances.monthlyData === 'object') {
+        appData.monthlyData = finances.monthlyData;
+    } else if (finances.salary !== undefined) {
+        appData.monthlyData[defaultMonthStr] = {
+            salary: finances.salary || 1084.20,
+            fixedExpenses: [{ id: Date.now(), name: 'General Fijos', amount: finances.expenses || 0 }],
+            variableExpenses: [{ id: Date.now() + 1, name: 'General Variables', amount: finances.variableExpenses || 0 }],
+            allocation: finances.allocation || 30
+        };
+    }
+
+    appData.gaming.items = Array.isArray(finances.gamingCollection) ? finances.gamingCollection : [];
+    appData.gaming.aliases = finances.gamingAliases && typeof finances.gamingAliases === 'object'
+        ? finances.gamingAliases
+        : {};
+
+    if (!appData.monthlyData[appData.currentMonth]) createNewMonthProfile(appData.currentMonth);
+    if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
+}
+
+function applyPersistedSnapshot(snapshot) {
+    if (!snapshot || typeof snapshot !== 'object') return;
+    if (snapshot.collectionsData) applySavedCollections(snapshot.collectionsData);
+    if (snapshot.finances) applySavedFinances(snapshot.finances);
+}
+
+function hydrateFromLocalBackup() {
+    const snapshot = loadLocalBackup();
+    if (!snapshot) return;
+    applyPersistedSnapshot(snapshot);
+    runtimeState.bootedFromLocal = true;
+}
+
+function configureAwsCredentials() {
+    const token = getStoredToken();
+    AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+        IdentityPoolId: IDENTITY_POOL_ID,
+        Logins: token ? {
+            [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: token
+        } : {}
+    });
+}
+
+function canSyncCloud() {
+    return Boolean(runtimeState.cloudSyncEnabled && dbUserId && navigator.onLine);
+}
+
+function updateSessionUI(message = '') {
+    const banner = document.getElementById('session-banner');
+    const badge = document.getElementById('session-sync-badge');
+    const todaySync = document.getElementById('today-sync-state');
+    const token = getStoredToken();
+    const expired = isTokenExpired(token);
+    runtimeState.sessionExpired = expired;
+
+    let modeLabel = 'Modo local';
+    let headline = message;
+
+    if (canSyncCloud()) {
+        modeLabel = runtimeState.pendingSync ? 'Nube activa · pendiente' : 'Nube activa';
+        headline = runtimeState.pendingSync
+            ? 'Hay cambios locales en cola y se subirán cuando termine la sincronización.'
+            : headline || 'Sesión conectada. Todo se está guardando en Dynamo y en copia local.';
+    } else if (!navigator.onLine) {
+        headline = headline || 'Sin conexión. Seguimos guardando todo en este navegador y sincronizamos cuando vuelva Internet.';
+    } else if (!token) {
+        headline = headline || 'No hay sesión iniciada. Puedes seguir usando la app en local y reconectar cuando quieras.';
+    } else if (expired) {
+        headline = headline || 'La sesión ha caducado. La vista sigue funcionando en local; reconecta para volver a sincronizar.';
+    } else {
+        headline = headline || 'No he podido validar la nube ahora mismo. Los cambios se están guardando en local.';
+    }
+
+    if (badge) badge.textContent = modeLabel;
+    if (todaySync) todaySync.textContent = modeLabel;
+
+    if (!banner) return;
+    banner.classList.remove('hidden');
+    banner.innerHTML = `
+        <div class="session-banner-row">
+            <div class="session-banner-copy">
+                <strong>${modeLabel}</strong>
+                <span>${headline}</span>
+            </div>
+            <div class="header-action-slot">
+                <button type="button" class="btn btn-sm" onclick="triggerImportDataJson()">Importar JSON</button>
+                <button type="button" class="btn btn-sm" onclick="exportDataJson()">Exportar JSON</button>
+                <button type="button" class="btn btn-sm" onclick="reconnectSession()">Reconectar</button>
+            </div>
+        </div>
+    `;
+}
+
+function showSaveNotification(message = '☁️ Guardado en la nube') {
     let toast = document.getElementById('save-toast');
     if(!toast) {
         toast = document.createElement('div');
         toast.id = 'save-toast';
         toast.role = 'status';
         toast.ariaLive = 'polite';
-        toast.textContent = '☁️ Guardado en la nube';
         document.body.appendChild(toast);
     }
+    toast.textContent = message;
     toast.style.opacity = '1';
     if(window.toastTimeout) clearTimeout(window.toastTimeout);
     window.toastTimeout = setTimeout(() => { toast.style.opacity = '0'; }, 2000);
 }
 
-function saveToDynamo() {
-    if (!dbUserId) return; 
-    const collectionsToSave = {};
-    appData.collections.forEach(col => { 
-        // NUEVO: Guardamos tanto la propiedad como los precios
-        collectionsToSave[col.id] = {
-            ownedList: col.ownedList,
-            prices: col.type === 'cards' ? col.items.map(i => i.price) : undefined
-        }; 
-    });
+function persistSnapshotToCloud(snapshot, onDone = null) {
+    if (!dbUserId) {
+        if (onDone) onDone(false);
+        return;
+    }
 
     const params = {
         TableName: 'ColeccionesData',
         Key: { userId: dbUserId },
         UpdateExpression: 'SET collectionsData = :collectionsData, finances = :finances, lastUpdated = :lastUpdated',
         ExpressionAttributeValues: {
-            ':collectionsData': JSON.stringify(collectionsToSave),
-            ':finances': {
-                globalSavings: appData.globalSavings,
-                monthlyData: appData.monthlyData,
-                gamingCollection: appData.gaming.items,
-                gamingAliases: appData.gaming.aliases
-            },
-            ':lastUpdated': new Date().toISOString()
+            ':collectionsData': JSON.stringify(snapshot.collectionsData),
+            ':finances': snapshot.finances,
+            ':lastUpdated': snapshot.lastUpdated || new Date().toISOString()
         }
     };
-    docClient.update(params, (err, data) => {
-        if (err) console.error("Error subiendo datos:", err);
-        else {
-            console.log("Datos guardados en la nube ☁️");
-            showSaveNotification();
+
+    docClient.update(params, (err) => {
+        if (err) {
+            console.error('Error subiendo datos:', err);
+            runtimeState.cloudSyncEnabled = false;
+            queuePendingSync(snapshot);
+            updateSessionUI('Fallo el guardado en la nube. Los cambios siguen a salvo en local.');
+            showSaveNotification('Guardado local. La nube queda pendiente.');
+            if (onDone) onDone(false);
+            return;
         }
+
+        clearPendingSync();
+        runtimeState.cloudSyncEnabled = true;
+        updateSessionUI('Sincronización al día en la nube y en local.');
+        showSaveNotification('☁️ Guardado en la nube');
+        if (onDone) onDone(true);
+    });
+}
+
+function flushPendingSync() {
+    const pending = getPendingSync();
+    if (!pending || !canSyncCloud()) return;
+    persistSnapshotToCloud(pending);
+}
+
+function saveToDynamo() {
+    const snapshot = buildPersistedSnapshot();
+    persistLocalBackup(snapshot);
+
+    if (!canSyncCloud()) {
+        queuePendingSync(snapshot);
+        updateSessionUI();
+        showSaveNotification('Guardado local. Se sincronizará después.');
+        return;
+    }
+
+    persistSnapshotToCloud(snapshot);
+}
+
+function loadDataFromDynamo() {
+    if (!dbUserId) return;
+    const params = { TableName: 'ColeccionesData', Key: { userId: dbUserId } };
+    docClient.get(params, (err, data) => {
+        if (err) {
+            console.error('Error descargando datos:', err);
+            runtimeState.cloudSyncEnabled = false;
+            updateSessionUI('No pude descargar la nube. Seguimos con la copia local.');
+            updateAllUI();
+            return;
+        }
+
+        if (data.Item) {
+            applyPersistedSnapshot({
+                collectionsData: data.Item.collectionsData ? JSON.parse(data.Item.collectionsData) : {},
+                finances: data.Item.finances || {}
+            });
+            persistLocalBackup(buildPersistedSnapshot());
+        }
+
+        runtimeState.cloudSyncEnabled = true;
+        updateAllUI();
+        updateSessionUI('Datos de la nube cargados. Todo queda también respaldado en local.');
+        flushPendingSync();
+    });
+}
+
+function initializeCloudSession() {
+    const token = getStoredToken();
+    runtimeState.sessionExpired = isTokenExpired(token);
+    configureAwsCredentials();
+
+    if (!token || runtimeState.sessionExpired) {
+        runtimeState.cloudSyncEnabled = false;
+        updateSessionUI();
+        return;
+    }
+
+    AWS.config.credentials.get((err) => {
+        if (err) {
+            runtimeState.cloudSyncEnabled = false;
+            updateSessionUI('La sesión de nube no está disponible. La app sigue operativa en local.');
+            return;
+        }
+
+        dbUserId = AWS.config.credentials.identityId;
+        runtimeState.cloudSyncEnabled = true;
+        updateSessionUI('Conectando con la nube...');
+        loadDataFromDynamo();
     });
 }
 
@@ -385,6 +663,7 @@ window.syncScryfallPrices = async () => {
                 const newPrice = data.prices?.eur || data.prices?.usd;
                 if (newPrice) {
                     card.price = parseFloat(newPrice);
+                    trackPriceSnapshot('magic', card.name, Number(card.price || 0), card.name);
                 }
             }
         } catch (e) {
@@ -464,8 +743,321 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
+    const globalSearchInput = document.getElementById('global-search-input');
+    if (globalSearchInput) {
+        globalSearchInput.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                runGlobalSearch();
+            }
+        });
+    }
+
+    const importInput = document.getElementById('import-json-input');
+    if (importInput) {
+        importInput.addEventListener('change', importDataJsonFromFile);
+    }
+
+    window.addEventListener('online', () => {
+        updateSessionUI('La conexión ha vuelto. Intentando sincronizar cambios pendientes.');
+        initializeCloudSession();
+        flushPendingSync();
+    });
+
+    window.addEventListener('offline', () => {
+        runtimeState.cloudSyncEnabled = false;
+        updateSessionUI('Sin conexión. Todo queda guardado en local hasta que vuelva Internet.');
+    });
+
+    hydrateFromLocalBackup();
+    updateAllUI();
+    initializeCloudSession();
 });
 
+
+function scrollToSection(sectionId) {
+    const target = document.getElementById(sectionId);
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+window.scrollToSection = scrollToSection;
+
+function getBinderEntriesSnapshot() {
+    try {
+        return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.binderEntries) || '{}');
+    } catch {
+        return {};
+    }
+}
+
+function getCollectionById(collectionId) {
+    return appData.collections.find((collection) => collection.id === collectionId) || null;
+}
+
+function getExpenseTotalsForMonth(monthKey) {
+    const month = appData.monthlyData[monthKey];
+    if (!month) {
+        return { fixed: 0, variable: 0, hobby: 0, savings: 0, totalExpenses: 0, salary: 0 };
+    }
+
+    const fixed = (month.fixedExpenses || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const variable = (month.variableExpenses || []).reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const disposable = Number(month.salary || 0) - fixed - variable;
+    const hobby = disposable > 0 ? disposable * ((month.allocation || 0) / 100) : 0;
+    const savings = disposable > 0 ? disposable - hobby : 0;
+    return {
+        fixed,
+        variable,
+        hobby,
+        savings,
+        salary: Number(month.salary || 0),
+        totalExpenses: fixed + variable
+    };
+}
+
+function getMonthlyHistoryData(limit = 6) {
+    const keys = Object.keys(appData.monthlyData).sort().slice(-limit);
+    return keys.map((monthKey) => {
+        const totals = getExpenseTotalsForMonth(monthKey);
+        const { year, month } = parseMonthStr(monthKey);
+        return {
+            key: monthKey,
+            label: `${MONTH_NAMES_ES[month - 1]} ${year}`,
+            ...totals
+        };
+    });
+}
+
+function getPriorityCollections() {
+    return appData.collections
+        .filter((collection) => collection.type !== 'cards')
+        .map((collection) => {
+            const nextIndex = collection.ownedList.indexOf(false);
+            return {
+                collection,
+                nextIndex,
+                remaining: collection.ownedList.filter((owned) => !owned).length
+            };
+        })
+        .filter((entry) => entry.nextIndex !== -1)
+        .sort((a, b) => a.collection.priority - b.collection.priority || a.collection.pricePerItem - b.collection.pricePerItem);
+}
+
+function getCheapestMissingMagicCard() {
+    const magic = getCollectionById(1);
+    if (!magic) return null;
+    return magic.items
+        .map((item, index) => ({ item, index, owned: magic.ownedList[index] }))
+        .filter((entry) => !entry.owned)
+        .sort((a, b) => a.item.price - b.item.price)[0] || null;
+}
+
+function getCheapestGameTarget() {
+    return [...(appData.gaming.items || [])]
+        .filter((item) => Number(item.currentPrice || 0) > 0)
+        .sort((a, b) => Number(a.currentPrice || 0) - Number(b.currentPrice || 0))[0] || null;
+}
+
+function buildSearchIndex() {
+    const results = [];
+
+    appData.collections.forEach((collection) => {
+        results.push({
+            kind: 'collection',
+            title: collection.name,
+            subtitle: `${collection.publisher} · ${collection.type === 'cards' ? 'Cartas' : 'Manga'}`,
+            meta: 'Colección',
+            action: () => {
+                if (!collection.expanded) collection.expanded = true;
+                renderCollections();
+                scrollToSection('collections-section');
+                setTimeout(() => document.getElementById(`col-${collection.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
+            }
+        });
+
+        if (collection.type === 'cards') {
+            collection.items.forEach((item, index) => {
+                results.push({
+                    kind: 'mtg',
+                    title: item.name,
+                    subtitle: `${collection.name} · ${formatMoney(item.price)}`,
+                    meta: 'Carta Magic',
+                    action: () => {
+                        if (!collection.expanded) collection.expanded = true;
+                        renderCollections();
+                        scrollToSection('collections-section');
+                        setTimeout(() => openMtgViewer(collection.id, index), 120);
+                    }
+                });
+            });
+        } else {
+            collection.ownedList.forEach((owned, index) => {
+                results.push({
+                    kind: 'manga',
+                    title: `${collection.name} #${index + 1}`,
+                    subtitle: `${owned ? 'Comprado' : 'Pendiente'} · ${formatMoney(collection.pricePerItem)}`,
+                    meta: 'Manga',
+                    action: () => {
+                        if (!collection.expanded) collection.expanded = true;
+                        renderCollections();
+                        scrollToSection('collections-section');
+                        setTimeout(() => openMangaViewer(collection.id, index), 120);
+                    }
+                });
+            });
+        }
+    });
+
+    (appData.gaming.items || []).forEach((game) => {
+        results.push({
+            kind: 'gaming',
+            title: game.title,
+            subtitle: `${game.platform || 'N/D'} · ${formatMoney(game.currentPrice || 0)}`,
+            meta: 'Gaming',
+            action: () => scrollToSection('gaming-section')
+        });
+    });
+
+    Object.entries(appData.monthlyData).forEach(([monthKey, monthData]) => {
+        ['fixedExpenses', 'variableExpenses'].forEach((group) => {
+            (monthData[group] || []).forEach((expense) => {
+                results.push({
+                    kind: 'expense',
+                    title: expense.name,
+                    subtitle: `${monthKey} · ${formatMoney(expense.amount)}`,
+                    meta: group === 'fixedExpenses' ? 'Gasto fijo' : 'Gasto variable',
+                    action: () => scrollToSection('finance-section')
+                });
+            });
+        });
+    });
+
+    const binderEntries = getBinderEntriesSnapshot();
+    Object.values(binderEntries).forEach((entry) => {
+        results.push({
+            kind: 'pokemon',
+            title: entry.speciesName || entry.cardName || 'Pokemon',
+            subtitle: `${entry.cardName || 'Sin carta'} · ${entry.setName || 'Sin set'}`,
+            meta: 'Pokemon Binder',
+            action: () => {
+                const speciesId = Number(entry.speciesId || 0);
+                window.location.href = `${POKEMON_BINDER_URL}&species=${speciesId}`;
+            }
+        });
+    });
+
+    return results;
+}
+
+function renderGlobalSearchResults(items, query) {
+    const container = document.getElementById('global-search-results');
+    if (!container) return;
+
+    if (!query) {
+        container.innerHTML = '';
+        return;
+    }
+
+    if (!items.length) {
+        container.innerHTML = '<div class="global-search-empty">No encontré coincidencias en finanzas, manga, gaming o binder.</div>';
+        return;
+    }
+
+    const grid = document.createElement('div');
+    grid.className = 'search-result-grid';
+
+    items.forEach((item) => {
+        const card = document.createElement('article');
+        card.className = 'search-result-card';
+        card.innerHTML = `
+            <span class="search-result-meta">${escapeHtml(item.meta)}</span>
+            <strong>${escapeHtml(item.title)}</strong>
+            <p>${escapeHtml(item.subtitle)}</p>
+            <button type="button" class="btn btn-sm">Abrir</button>
+        `;
+        card.querySelector('button').addEventListener('click', item.action);
+        grid.appendChild(card);
+    });
+
+    container.innerHTML = '';
+    container.appendChild(grid);
+}
+
+window.runGlobalSearch = () => {
+    const input = document.getElementById('global-search-input');
+    if (!input) return;
+    const query = input.value.trim();
+    if (!query) {
+        renderGlobalSearchResults([], '');
+        return;
+    }
+
+    const normalized = normalizeGameTitle(query);
+    const matches = buildSearchIndex()
+        .filter((item) => normalizeGameTitle(`${item.title} ${item.subtitle} ${item.meta}`).includes(normalized))
+        .slice(0, 12);
+
+    renderGlobalSearchResults(matches, query);
+};
+
+window.clearGlobalSearch = () => {
+    const input = document.getElementById('global-search-input');
+    if (input) input.value = '';
+    renderGlobalSearchResults([], '');
+};
+
+window.triggerImportDataJson = () => {
+    document.getElementById('import-json-input')?.click();
+};
+
+window.exportDataJson = () => {
+    const exportPayload = {
+        version: 2,
+        exportedAt: new Date().toISOString(),
+        app: buildPersistedSnapshot(),
+        pokemonBinder: getBinderEntriesSnapshot()
+    };
+
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `life-savings-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    showSaveNotification('JSON exportado');
+};
+
+function importDataJsonFromFile(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+        try {
+            const parsed = JSON.parse(String(reader.result || '{}'));
+            if (!parsed.app) throw new Error('Formato no compatible');
+
+            applyPersistedSnapshot(parsed.app);
+            persistLocalBackup(buildPersistedSnapshot());
+
+            if (parsed.pokemonBinder && typeof parsed.pokemonBinder === 'object') {
+                localStorage.setItem(LOCAL_STORAGE_KEYS.binderEntries, JSON.stringify(parsed.pokemonBinder));
+            }
+
+            updateAllUI();
+            saveToDynamo();
+            showSaveNotification('JSON importado correctamente');
+        } catch (error) {
+            console.error('Import JSON error:', error);
+            showSaveNotification('No pude importar ese JSON');
+        } finally {
+            event.target.value = '';
+        }
+    };
+    reader.readAsText(file);
+}
 
 // --- LÓGICA DE MESES Y GASTOS ---
 
@@ -633,6 +1225,7 @@ function renderExpenseLists() {
 const formatMoney = (amount) => { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount); };
 
 let mainChart = null;
+let historyChart = null;
 function drawDonutChart(fixed, variable, savings, hobbies) {
     const stratBox = document.querySelector('.strategy-box');
     stratBox.style.flexWrap = 'wrap'; 
@@ -679,7 +1272,282 @@ function drawDonutChart(fixed, variable, savings, hobbies) {
     }
 }
 
+function drawMonthlyHistoryChart(historyData) {
+    const canvas = document.getElementById('monthly-history-chart');
+    if (!canvas) return;
+
+    const labels = historyData.map((item) => item.label);
+    const datasets = {
+        labels,
+        datasets: [
+            {
+                label: 'Ahorro',
+                data: historyData.map((item) => Number(item.savings.toFixed(2))),
+                borderColor: '#20c997',
+                backgroundColor: 'rgba(32, 201, 151, 0.18)',
+                tension: 0.28,
+                fill: true
+            },
+            {
+                label: 'Hobby',
+                data: historyData.map((item) => Number(item.hobby.toFixed(2))),
+                borderColor: '#2b7fff',
+                backgroundColor: 'rgba(43, 127, 255, 0.16)',
+                tension: 0.28,
+                fill: true
+            },
+            {
+                label: 'Gasto total',
+                data: historyData.map((item) => Number(item.totalExpenses.toFixed(2))),
+                borderColor: '#ffb454',
+                backgroundColor: 'rgba(255, 180, 84, 0.14)',
+                tension: 0.24,
+                fill: false
+            }
+        ]
+    };
+
+    const options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: {
+                position: 'bottom',
+                labels: { color: '#d9e6f2', boxWidth: 12, font: { size: 11 } }
+            }
+        },
+        scales: {
+            x: {
+                ticks: { color: '#9db0c1' },
+                grid: { color: 'rgba(157, 176, 193, 0.08)' }
+            },
+            y: {
+                ticks: { color: '#9db0c1' },
+                grid: { color: 'rgba(157, 176, 193, 0.08)' }
+            }
+        }
+    };
+
+    if (historyChart) {
+        historyChart.data = datasets;
+        historyChart.update();
+    } else {
+        historyChart = new Chart(canvas, {
+            type: 'line',
+            data: datasets,
+            options
+        });
+    }
+}
+
+function buildDashboardNotifications(summary) {
+    const notifications = [];
+    const priority = summary.priorityCollection;
+    const cheapestCard = summary.cheapestMagicCard;
+    const cheapestGame = summary.cheapestGame;
+    const priceAlerts = loadPriceSnapshotState().alerts || [];
+
+    if (summary.totalItemsNeeded === 0) {
+        notifications.push({
+            icon: '✓',
+            title: 'Colecciones al día',
+            body: 'No te queda nada pendiente en manga y cartas ahora mismo.'
+        });
+    } else if (priority) {
+        notifications.push({
+            icon: '1',
+            title: `${priority.collection.name} va primero`,
+            body: `El siguiente objetivo lógico es el tomo ${priority.nextIndex + 1} por ${formatMoney(priority.collection.pricePerItem)}.`
+        });
+    }
+
+    if (summary.hobbyBudget > 0) {
+        notifications.push({
+            icon: '€',
+            title: `Este mes puedes comprar con margen`,
+            body: `Tienes ${formatMoney(summary.hobbyBudget)} para hobby y ${formatMoney(summary.currentMonthSavings)} de ahorro sugerido.`
+        });
+    }
+
+    if (cheapestGame) {
+        notifications.push({
+            icon: '🎮',
+            title: `${cheapestGame.title} es tu juego más cercano`,
+            body: `Ahora mismo está en ${formatMoney(cheapestGame.currentPrice || 0)} y es el precio activo más bajo de tu shelf.`
+        });
+    }
+
+    if (cheapestCard) {
+        notifications.push({
+            icon: '🃏',
+            title: `${cheapestCard.item.name} es la carta más asequible`,
+            body: `La pendiente más barata de Magic se queda en ${formatMoney(cheapestCard.item.price)}.`
+        });
+    }
+
+    if (runtimeState.pendingSync) {
+        notifications.push({
+            icon: '☁',
+            title: 'Hay cambios pendientes de sincronizar',
+            body: 'La copia local está al día y la nube se actualizará cuando la sesión o la conexión vuelvan.'
+        });
+    }
+
+    priceAlerts.slice(0, 2).forEach((alert) => {
+        notifications.push({
+            icon: '↓',
+            title: `${alert.title} ha bajado de precio`,
+            body: `Antes estaba en ${formatMoney(alert.previous)} y ahora lo tienes en ${formatMoney(alert.next)}.`
+        });
+    });
+
+    return notifications.slice(0, 5);
+}
+
+function renderHistoryAndNotifications(summary) {
+    const historyData = getMonthlyHistoryData(6);
+    const summaryEl = document.getElementById('history-summary');
+    const comparisonGrid = document.getElementById('history-comparison-grid');
+    const notificationFeed = document.getElementById('notification-feed');
+    const notificationState = document.getElementById('notification-state');
+
+    const current = historyData[historyData.length - 1] || null;
+    const previous = historyData[historyData.length - 2] || null;
+
+    if (summaryEl) {
+        if (!current || !previous) {
+            summaryEl.textContent = 'En cuanto haya al menos dos meses registrados, te comparo la evolución.';
+        } else {
+            const savingDelta = current.savings - previous.savings;
+            const hobbyDelta = current.hobby - previous.hobby;
+            const savingTrend = savingDelta >= 0 ? 'mejor' : 'peor';
+            summaryEl.textContent = `Vas ${savingTrend} que el mes pasado: ahorro ${savingDelta >= 0 ? '+' : ''}${formatMoney(Math.abs(savingDelta))} y hobby ${hobbyDelta >= 0 ? '+' : ''}${formatMoney(Math.abs(hobbyDelta))}.`;
+        }
+    }
+
+    if (comparisonGrid) {
+        const comparisonCards = [];
+        if (current) {
+            comparisonCards.push({
+                label: 'Ahorro sugerido',
+                value: formatMoney(current.savings),
+                delta: previous ? `${current.savings - previous.savings >= 0 ? '+' : ''}${formatMoney(current.savings - previous.savings)} vs mes anterior` : 'Sin comparativa previa'
+            });
+            comparisonCards.push({
+                label: 'Presupuesto hobby',
+                value: formatMoney(current.hobby),
+                delta: previous ? `${current.hobby - previous.hobby >= 0 ? '+' : ''}${formatMoney(current.hobby - previous.hobby)} vs mes anterior` : 'Sin comparativa previa'
+            });
+            comparisonCards.push({
+                label: 'Gasto total',
+                value: formatMoney(current.totalExpenses),
+                delta: previous ? `${current.totalExpenses - previous.totalExpenses >= 0 ? '+' : ''}${formatMoney(current.totalExpenses - previous.totalExpenses)} vs mes anterior` : 'Sin comparativa previa'
+            });
+        }
+
+        comparisonGrid.innerHTML = comparisonCards.map((item) => `
+            <article class="comparison-card">
+                <span>${escapeHtml(item.label)}</span>
+                <strong>${escapeHtml(item.value)}</strong>
+                <div class="comparison-delta">${escapeHtml(item.delta)}</div>
+            </article>
+        `).join('');
+    }
+
+    const notifications = buildDashboardNotifications(summary);
+    if (notificationFeed) {
+        notificationFeed.innerHTML = notifications.map((item) => `
+            <article class="notification-item">
+                <span class="notification-badge">${escapeHtml(item.icon)}</span>
+                <div class="notification-copy">
+                    <strong>${escapeHtml(item.title)}</strong>
+                    <p>${escapeHtml(item.body)}</p>
+                </div>
+            </article>
+        `).join('');
+    }
+    if (notificationState) {
+        notificationState.textContent = notifications.length ? `${notifications.length} señal${notifications.length === 1 ? '' : 'es'} activas` : 'Sin alertas';
+    }
+
+    onChartReady(() => drawMonthlyHistoryChart(historyData));
+}
+
+function renderDashboardModules(summary) {
+    const binderEntries = getBinderEntriesSnapshot();
+    const mangaCollections = appData.collections.filter((collection) => collection.type === 'manga');
+    const totalMangaMissing = mangaCollections.reduce((sum, collection) => (
+        sum + collection.ownedList.filter((owned) => !owned).length
+    ), 0);
+    const binderCount = Object.keys(binderEntries).length;
+
+    const headline = document.getElementById('dashboard-headline');
+    const todaySpend = document.getElementById('today-spend');
+    const todaySpendNote = document.getElementById('today-spend-note');
+    const todayCollection = document.getElementById('today-collection');
+    const todayCollectionNote = document.getElementById('today-collection-note');
+    const todayNearest = document.getElementById('today-nearest');
+    const todayNearestNote = document.getElementById('today-nearest-note');
+
+    if (headline) {
+        headline.textContent = summary.totalItemsNeeded
+            ? `Ahora mismo te faltan ${summary.totalItemsNeeded} items y tu mejor jugada es reservar ${formatMoney(summary.magicPiggyBank)} para Magic sin perder ritmo en manga y gaming.`
+            : 'Has dejado las colecciones al día. La portada queda lista para seguir comprando con criterio.';
+    }
+
+    if (todaySpend) todaySpend.textContent = formatMoney(summary.hobbyBudget);
+    if (todaySpendNote) {
+        todaySpendNote.textContent = summary.hobbyBudget > 0
+            ? `Puedes usar ${formatMoney(summary.spendingMoney)} con flexibilidad y apartar ${formatMoney(summary.magicPiggyBank)} para Magic.`
+            : 'Este mes no hay margen positivo de hobby con los datos actuales.';
+    }
+
+    if (todayCollection) {
+        todayCollection.textContent = summary.priorityCollection
+            ? summary.priorityCollection.collection.name
+            : 'Todo completado';
+    }
+    if (todayCollectionNote) {
+        todayCollectionNote.textContent = summary.priorityCollection
+            ? `Siguiente compra: tomo ${summary.priorityCollection.nextIndex + 1} por ${formatMoney(summary.priorityCollection.collection.pricePerItem)}.`
+            : 'No queda ninguna colección de manga pendiente.';
+    }
+
+    const nearestTarget = summary.cheapestGame
+        ? `${summary.cheapestGame.title} · ${formatMoney(summary.cheapestGame.currentPrice || 0)}`
+        : summary.cheapestMagicCard
+            ? `${summary.cheapestMagicCard.item.name} · ${formatMoney(summary.cheapestMagicCard.item.price)}`
+            : 'Sin objetivos';
+
+    if (todayNearest) todayNearest.textContent = nearestTarget;
+    if (todayNearestNote) {
+        todayNearestNote.textContent = summary.cheapestGame
+            ? `Es tu juego más barato ahora mismo en la shelf.`
+            : summary.cheapestMagicCard
+                ? 'Es la siguiente carta pendiente más asequible de Magic.'
+                : 'Añade juegos o deja pendientes nuevas cartas para ver objetivos cercanos.';
+    }
+
+    document.getElementById('module-finance-stat').textContent = formatMoney(summary.currentMonthSavings);
+    document.getElementById('module-finance-copy').textContent = `Gasto total ${formatMoney(summary.totalFixed + summary.totalVar)} · hobby ${formatMoney(summary.hobbyBudget)}.`;
+    document.getElementById('module-manga-stat').textContent = `${totalMangaMissing} pendientes`;
+    document.getElementById('module-manga-copy').textContent = totalMangaMissing
+        ? `Vagabond y Slam Dunk siguen con ${totalMangaMissing} tomos por cerrar.`
+        : 'Los mangas están completos ahora mismo.';
+    document.getElementById('module-gaming-stat').textContent = `${appData.gaming.items.length} juego${appData.gaming.items.length === 1 ? '' : 's'}`;
+    document.getElementById('module-gaming-copy').textContent = summary.cheapestGame
+        ? `Más cercano: ${summary.cheapestGame.title} por ${formatMoney(summary.cheapestGame.currentPrice || 0)}.`
+        : 'Tu gaming shelf está lista para crecer cuando quieras.';
+    document.getElementById('module-pokemon-stat').textContent = `${binderCount} cartas`;
+    document.getElementById('module-pokemon-copy').textContent = binderCount
+        ? `Tienes ${binderCount} Pokemon ya asignados en el binder virtual.`
+        : 'El binder está preparado para que empieces a asignar cartas.';
+}
+
 function updateAllUI() {
+    if (!appData.monthlyData[appData.currentMonth]) {
+        createNewMonthProfile(appData.currentMonth);
+    }
     ensureMonthControls();
     const { year, month } = parseMonthStr(appData.currentMonth);
     document.getElementById('month-selector').value = String(month).padStart(2, '0');
@@ -694,6 +1562,7 @@ function updateAllUI() {
     renderGamingCollection();
     renderMtgViewer();
     renderMangaViewer();
+    updateSessionUI();
 }
 
 function buildSavingsPanel(monthlyAdd, totalRealSavings) {
@@ -781,11 +1650,7 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
 
     buildSavingsPanel(currentMonthSavings, totalRealSavings);
 
-    if (typeof Chart !== 'undefined') {
-        drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
-    } else {
-        window.ChartLoadedCallback = () => drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget);
-    }
+    onChartReady(() => drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget));
 
     let recommendations = [];
     let tempBudget = spendingMoney;
@@ -870,6 +1735,29 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
         }
     }
     detailsDiv.innerHTML = planHTML;
+
+    const summary = {
+        totalFixed,
+        totalVar,
+        hobbyBudget,
+        currentMonthSavings,
+        totalItemsNeeded,
+        totalCostNeeded,
+        magicRemaining,
+        magicPiggyBank,
+        spendingMoney,
+        months,
+        completedCollections,
+        recommendations,
+        priorityCollection: getPriorityCollections()[0] || null,
+        cheapestMagicCard: getCheapestMissingMagicCard(),
+        cheapestGame: getCheapestGameTarget()
+    };
+
+    runtimeState.lastFinanceSummary = summary;
+    renderDashboardModules(summary);
+    renderHistoryAndNotifications(summary);
+    return summary;
 }
 
 window.showAnnualSummary = () => {
@@ -1013,48 +1901,42 @@ function renderCollections() {
                 bodyDiv.appendChild(listGrid);
             } else {
                 const mangaGrid = document.createElement('div');
-                mangaGrid.className = 'manga-grid bookshelf-grid';
+                mangaGrid.className = 'manga-grid manga-grid--covers';
                 col.ownedList.forEach((isOwned, idx) => {
-                    const cover = document.createElement('div');
-                    cover.className = `manga-cover shelf-book ${col.theme} ${isOwned ? 'owned' : ''}`;
-                    const spineWidth = 24 + ((idx + col.id) % 4) * 3;
-                    const spineHeight = 132 + ((idx + col.id) % 6) * 10;
-                    const hue = ((idx * 27) + (col.id * 34)) % 360;
-                    cover.style.setProperty('--book-w', `${spineWidth}px`);
-                    cover.style.setProperty('--book-h', `${spineHeight}px`);
-                    cover.style.setProperty('--spine-hue', `${hue}`);
-                    cover.onclick = (ev) => previewMangaBook(col.id, idx, ev);
-                    
+                    const cover = document.createElement('article');
+                    cover.className = `manga-card ${col.theme} ${isOwned ? 'owned' : ''}`;
+                    cover.setAttribute('data-collection-id', String(col.id));
+                    cover.setAttribute('data-volume-index', String(idx));
+
                     if (col.folder && col.ext) {
                         const imgPath = `${col.folder}/${idx + 1}.${col.ext}`;
                         cover.innerHTML = `
-                            <div class="book-spine">
-                                <span class="book-spine-title">${escapeHtml(col.name)}</span>
-                                <span class="book-spine-number">${idx + 1}</span>
-                            </div>
-                            <div class="book-face">
-                                <img src="${imgPath}" alt="Vol ${idx + 1}" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'">
-                                <div class="book-fallback">
-                                    <span>${idx + 1}</span>
+                            <button type="button" onclick="openMangaViewer(${col.id}, ${idx})" aria-label="Abrir ${escapeHtml(col.name)} tomo ${idx + 1}">
+                                <div class="manga-card-cover-wrap">
+                                    <img src="${imgPath}" alt="Vol ${idx + 1}" loading="lazy" decoding="async" onerror="this.style.display='none'; this.nextElementSibling.style.display='grid'">
+                                    <div class="manga-card-fallback">${idx + 1}</div>
+                                    <span class="manga-card-index">#${idx + 1}</span>
+                                    <span class="manga-card-status">${isOwned ? 'Comprado' : 'Pendiente'}</span>
                                 </div>
-                            </div>
+                                <div class="manga-card-body">
+                                    <div class="manga-card-title">${escapeHtml(col.name)}</div>
+                                    <div class="manga-card-meta">${escapeHtml(col.publisher)} · ${formatMoney(col.pricePerItem)}</div>
+                                </div>
+                            </button>
                         `;
                     } else {
                         cover.innerHTML = `
-                            <div class="book-spine">
-                                <span class="book-spine-title">${escapeHtml(col.name)}</span>
-                                <span class="book-spine-number">${idx + 1}</span>
-                            </div>
-                            <div class="book-face">
-                                <div class="cover-art">
-                                    <div class="spine-top">${col.publisher}</div>
-                                    <div class="spine-main">
-                                        <span class="cover-title-vertical">${col.name}</span>
-                                        <span class="cover-number">${idx + 1}</span>
-                                    </div>
-                                    <div class="spine-bottom">★</div>
+                            <button type="button" onclick="openMangaViewer(${col.id}, ${idx})" aria-label="Abrir ${escapeHtml(col.name)} tomo ${idx + 1}">
+                                <div class="manga-card-cover-wrap">
+                                    <div class="manga-card-fallback" style="display:grid">${idx + 1}</div>
+                                    <span class="manga-card-index">#${idx + 1}</span>
+                                    <span class="manga-card-status">${isOwned ? 'Comprado' : 'Pendiente'}</span>
                                 </div>
-                            </div>
+                                <div class="manga-card-body">
+                                    <div class="manga-card-title">${escapeHtml(col.name)}</div>
+                                    <div class="manga-card-meta">${escapeHtml(col.publisher)} · ${formatMoney(col.pricePerItem)}</div>
+                                </div>
+                            </button>
                         `;
                     }
                     mangaGrid.appendChild(cover);
@@ -1354,6 +2236,7 @@ window.addGameToCollection = async (game) => {
     }
 
     appData.gaming.items.unshift(normalized);
+    trackPriceSnapshot('gaming', normalized.id, Number(normalized.currentPrice || 0), normalized.title);
     renderGamingCollection();
     saveToDynamo();
     if (status) status.textContent = `"${normalized.title}" añadido a tu colección.`;
@@ -1385,6 +2268,7 @@ window.refreshGamingPrices = async () => {
                 item.currentPrice = top.currentPrice || item.currentPrice;
                 item.normalPrice = top.normalPrice || item.normalPrice;
                 item.cheapestEver = Math.min(item.cheapestEver || Infinity, top.currentPrice || item.currentPrice);
+                trackPriceSnapshot('gaming', item.id, Number(item.currentPrice || 0), item.title);
                 updated++;
             }
         } catch {
@@ -1430,6 +2314,7 @@ window.addManualGame = () => {
     };
 
     appData.gaming.items.unshift(item);
+    trackPriceSnapshot('gaming', item.id, Number(item.currentPrice || 0), item.title);
     if (alias) {
         appData.gaming.aliases[normalizeGameTitle(alias)] = normalizeGameTitle(title);
     }
@@ -1812,6 +2697,3 @@ document.addEventListener('keydown', (ev) => {
         else if (mtgOpen) moveMtgViewer(-1);
     }
 });
-
-// INIT ARRANQUE BÁSICO
-updateAllUI();
