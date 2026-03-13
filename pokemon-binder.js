@@ -166,8 +166,21 @@ function getPriceFromCard(card) {
     );
 }
 
-function getCardImage(card) {
-    return card.image || card.imageUrl || card.images?.small || '';
+function buildTcgdexImageUrl(baseImageUrl, quality = 'low', extension = 'webp') {
+    const raw = String(baseImageUrl || '').trim();
+    if (!raw) return '';
+    if (/\.(png|webp|jpg|jpeg)$/i.test(raw)) return raw;
+    const normalizedBase = raw.endsWith('/') ? raw.slice(0, -1) : raw;
+    return `${normalizedBase}/${quality}.${extension}`;
+}
+
+function getCardImage(card, quality = 'low') {
+    const directImage = card.image || card.imageUrl || card.images?.small || '';
+    return buildTcgdexImageUrl(directImage, quality, 'webp');
+}
+
+function normalizeStoredEntryImage(imageUrl, quality = 'low') {
+    return buildTcgdexImageUrl(imageUrl, quality, 'webp');
 }
 
 function persistEntriesBackup() {
@@ -342,11 +355,12 @@ function renderBinderGrid() {
 
     pageSpecies.forEach((species) => {
         const entry = binderState.entries[String(species.id)];
+        const slotImage = entry?.imageSmall ? normalizeStoredEntryImage(entry.imageSmall, 'low') : '';
         const slot = document.createElement('article');
         slot.className = `binder-slot${binderState.highlightedSpeciesId === species.id ? ' highlighted' : ''}`;
         slot.innerHTML = `
             <div class="binder-pocket">
-                ${entry?.imageSmall ? `<img class="binder-card-image" src="${entry.imageSmall}" alt="${entry.cardName}">` : ''}
+                ${slotImage ? `<img class="binder-card-image" src="${slotImage}" alt="${entry.cardName}">` : ''}
             </div>
             <div class="binder-slot-footer">
                 <div class="binder-slot-title">
@@ -428,9 +442,15 @@ function renderPokemonModal() {
     const preview = document.getElementById('pokemon-selected-preview');
     const removeBtn = document.getElementById('pokemon-remove-btn');
     if (preview) {
-        if (entry?.imageLarge || entry?.imageSmall) {
+        const previewImage = entry?.imageLarge
+            ? normalizeStoredEntryImage(entry.imageLarge, 'high')
+            : entry?.imageSmall
+                ? normalizeStoredEntryImage(entry.imageSmall, 'low')
+                : '';
+
+        if (previewImage) {
             preview.classList.remove('empty');
-            preview.innerHTML = `<img src="${entry.imageLarge || entry.imageSmall}" alt="${entry.cardName}">`;
+            preview.innerHTML = `<img src="${previewImage}" alt="${entry.cardName}">`;
         } else {
             preview.classList.add('empty');
             preview.innerHTML = '<span>Sin carta elegida</span>';
@@ -543,7 +563,7 @@ function renderPokemonCardResults(cards) {
         const article = document.createElement('article');
         article.className = 'pokemon-card-result';
         article.innerHTML = `
-            <img src="${getCardImage(card)}" alt="${card.name}">
+            <img src="${getCardImage(card, 'low')}" alt="${card.name}">
             <div class="pokemon-card-copy">
                 <div class="pokemon-card-name">${card.name}</div>
                 <div class="pokemon-card-meta">${card.set?.name || 'Set N/D'} · #${card.localId || '--'}</div>
@@ -567,8 +587,8 @@ async function assignCardToSpecies(speciesId, card) {
         speciesName: formatSpeciesName(species.name),
         cardId: card.id,
         cardName: card.name,
-        imageSmall: getCardImage(card),
-        imageLarge: getCardImage(card),
+        imageSmall: getCardImage(card, 'low'),
+        imageLarge: getCardImage(card, 'high'),
         setName: card.set?.name || 'Set N/D',
         number: card.localId || '',
         rarity: card.rarity || 'Rareza N/D',
