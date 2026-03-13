@@ -12,7 +12,8 @@ const binderState = {
     selectedSpeciesId: null,
     searchCache: {},
     dbUserId: null,
-    highlightedSpeciesId: null
+    highlightedSpeciesId: null,
+    cloudSyncEnabled: true
 };
 
 const binderStorageKeys = {
@@ -59,8 +60,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 AWS.config.credentials.get(async (err) => {
     if (err) {
-        setBinderStatus('No se pudo validar la sesion con AWS.');
+        binderState.cloudSyncEnabled = false;
         console.error('AWS credentials error:', err);
+        await loadBinderApp();
+        setBinderStatus('Binder listo en modo local. Vuelve a iniciar sesion para sincronizar en la nube.');
         return;
     }
 
@@ -160,7 +163,11 @@ async function loadBinderApp() {
         binderState.species = species;
         binderState.entries = entries;
         renderBinder();
-        setBinderStatus('Binder listo. Elige un Pokemon para asignarle una carta.');
+        setBinderStatus(
+            binderState.cloudSyncEnabled
+                ? 'Binder listo. Elige un Pokemon para asignarle una carta.'
+                : 'Binder listo en modo local. Elige un Pokemon para asignarle una carta.'
+        );
     } catch (error) {
         console.error('Binder boot error:', error);
         binderState.species = [];
@@ -236,6 +243,8 @@ function saveBinderEntries() {
 
     return new Promise((resolve) => {
         if (!binderState.dbUserId) {
+            showBinderToast('Binder guardado localmente');
+            setBinderStatus('Cambios guardados en este navegador. La nube esta desactivada hasta que inicies sesion de nuevo.');
             resolve();
             return;
         }
