@@ -1,8 +1,10 @@
 const POKE_API_SPECIES_URL = 'https://pokeapi.co/api/v2/pokemon-species?limit=2000';
-const POKEMON_TCG_SEARCH_URL = 'https://api.pokemontcg.io/v2/cards';
+const TCGDEX_CARD_LIST_URL = 'https://api.tcgdex.net/v2/en/cards';
+const TCGDEX_CARD_URL = 'https://api.tcgdex.net/v2/en/cards';
 const REGION = 'eu-north-1';
 const USER_POOL_ID = 'eu-north-1_HT76kHw12';
 const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
+const NATIONAL_DEX_TOTAL = 1025;
 
 const binderState = {
     species: [],
@@ -18,7 +20,8 @@ const binderState = {
 
 const binderStorageKeys = {
     species: 'pokemon-binder-species-v1',
-    entries: 'pokemon-binder-entries-v1'
+    entries: 'pokemon-binder-entries-v1',
+    cardCache: 'pokemon-binder-card-cache-v2'
 };
 
 AWS.config.region = REGION;
@@ -61,7 +64,6 @@ document.addEventListener('DOMContentLoaded', () => {
 AWS.config.credentials.get(async (err) => {
     if (err) {
         binderState.cloudSyncEnabled = false;
-        console.error('AWS credentials error:', err);
         await loadBinderApp();
         setBinderStatus('Binder listo en modo local. Vuelve a iniciar sesion para sincronizar en la nube.');
         return;
@@ -128,6 +130,17 @@ function parseSpeciesId(url) {
     return match ? Number(match[1]) : null;
 }
 
+function sanitizeSpeciesList(items) {
+    return (items || [])
+        .map((item) => ({
+            id: Number(item.id),
+            name: item.name
+        }))
+        .filter((item) => item.id && item.id <= NATIONAL_DEX_TOTAL && item.name)
+        .filter((item, index, array) => array.findIndex((candidate) => candidate.id === item.id) === index)
+        .sort((a, b) => a.id - b.id);
+}
+
 function getTotalPages() {
     return Math.max(1, Math.ceil(binderState.species.length / binderState.pageSize));
 }
@@ -137,8 +150,14 @@ function getSpeciesById(speciesId) {
 }
 
 function getPriceFromCard(card) {
-    const prices = card.cardmarket?.prices || {};
+    const prices = card.pricing?.cardmarket || card.cardmarket?.prices || {};
     return Number(
+        prices.trend ||
+        prices['trend-holo'] ||
+        prices.avg ||
+        prices['avg-holo'] ||
+        prices.low ||
+        prices['low-holo'] ||
         prices.trendPrice ||
         prices.averageSellPrice ||
         prices.lowPriceExPlus ||
@@ -147,12 +166,29 @@ function getPriceFromCard(card) {
     );
 }
 
+function getCardImage(card) {
+    return card.image || card.imageUrl || card.images?.small || '';
+}
+
 function persistEntriesBackup() {
     localStorage.setItem(binderStorageKeys.entries, JSON.stringify(binderState.entries));
 }
 
+function loadCardCache() {
+    try {
+        return JSON.parse(localStorage.getItem(binderStorageKeys.cardCache) || '{}');
+    } catch {
+        return {};
+    }
+}
+
+function persistCardCache() {
+    localStorage.setItem(binderStorageKeys.cardCache, JSON.stringify(binderState.searchCache));
+}
+
 async function loadBinderApp() {
     setBinderStatus('Cargando huecos del binder...');
+    binderState.searchCache = loadCardCache();
 
     try {
         const [species, entries] = await Promise.all([
@@ -182,8 +218,9 @@ async function loadSpeciesList() {
     if (cached) {
         try {
             const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed.data) && parsed.data.length) {
-                return parsed.data;
+            const sanitized = sanitizeSpeciesList(parsed.data);
+            if (sanitized.length) {
+                return sanitized;
             }
         } catch {
             // Ignore broken cache and refetch.
@@ -193,13 +230,12 @@ async function loadSpeciesList() {
     const res = await fetch(POKE_API_SPECIES_URL);
     if (!res.ok) throw new Error(`PokeAPI HTTP ${res.status}`);
     const data = await res.json();
-    const species = (data.results || [])
+    const species = sanitizeSpeciesList((data.results || [])
         .map((item) => ({
             id: parseSpeciesId(item.url),
             name: item.name
         }))
-        .filter((item) => item.id)
-        .sort((a, b) => a.id - b.id);
+    );
 
     localStorage.setItem(binderStorageKeys.species, JSON.stringify({ data: species }));
     return species;
@@ -279,7 +315,7 @@ function renderBinder() {
 }
 
 function renderBinderSummary() {
-    const totalSlots = binderState.species.length;
+    const totalSlots = Math.min(binderState.species.length, NATIONAL_DEX_TOTAL);
     const filledSlots = Object.keys(binderState.entries).length;
     const totalPages = getTotalPages();
     const pageStart = totalSlots ? ((binderState.currentPage - 1) * binderState.pageSize) + 1 : 0;
@@ -408,9 +444,23 @@ function renderPokemonModal() {
     if (Array.isArray(binderState.searchCache[species.id])) {
         renderPokemonCardResults(binderState.searchCache[species.id]);
     } else {
-        document.getElementById('pokemon-results-status').textContent = 'Consultando cartas...';
+        document.getElementById('pokemon-results-status').textContent = 'Consultando cartas y precios...';
         document.getElementById('pokemon-card-results').innerHTML = '';
     }
+}
+
+function chunkArray(items, size) {
+    const chunks = [];
+    for (let i = 0; i < items.length; i += size) {
+        chunks.push(items.slice(i, i + size));
+    }
+    return chunks;
+}
+
+async function fetchTcgdexCard(cardId) {
+    const res = await fetch(`${TCGDEX_CARD_URL}/${encodeURIComponent(cardId)}`);
+    if (!res.ok) throw new Error(`TCGdex card HTTP ${res.status}`);
+    return await res.json();
 }
 
 async function loadCardsForSpecies(speciesId) {
@@ -420,29 +470,57 @@ async function loadCardsForSpecies(speciesId) {
     }
 
     const resultsStatus = document.getElementById('pokemon-results-status');
-    if (resultsStatus) resultsStatus.textContent = 'Consultando Pokemon TCG API...';
+    if (resultsStatus) resultsStatus.textContent = 'Consultando TCGdex...';
 
     try {
         const query = new URLSearchParams({
-            q: `nationalPokedexNumbers:${speciesId}`,
-            pageSize: '250',
-            select: 'id,name,images,set,rarity,number,cardmarket,supertype,nationalPokedexNumbers'
+            dexId: `eq:${speciesId}`,
+            category: 'eq:Pokemon',
+            'pagination:itemsPerPage': '250'
         });
 
-        const res = await fetch(`${POKEMON_TCG_SEARCH_URL}?${query.toString()}`);
-        if (!res.ok) throw new Error(`Pokemon TCG API HTTP ${res.status}`);
+        const res = await fetch(`${TCGDEX_CARD_LIST_URL}?${query.toString()}`);
+        if (!res.ok) throw new Error(`TCGdex list HTTP ${res.status}`);
 
-        const data = await res.json();
-        const cards = (data.data || [])
-            .filter((card) => Array.isArray(card.nationalPokedexNumbers) && card.nationalPokedexNumbers.includes(speciesId))
-            .filter((card) => String(card.supertype || '').toLowerCase().includes('pok'))
+        const list = await res.json();
+        const listItems = Array.isArray(list)
+            ? list
+            : Array.isArray(list.cards)
+                ? list.cards
+                : Array.isArray(list.data)
+                    ? list.data
+                    : [];
+        const detailedCards = [];
+        const cardIds = listItems.map((card) => card.id).filter(Boolean);
+
+        for (const batch of chunkArray(cardIds, 10)) {
+            const responses = await Promise.all(
+                batch.map(async (cardId) => {
+                    try {
+                        return await fetchTcgdexCard(cardId);
+                    } catch {
+                        return null;
+                    }
+                })
+            );
+            detailedCards.push(...responses.filter(Boolean));
+        }
+
+        const cards = detailedCards
+            .filter((card) => {
+                const dexIds = Array.isArray(card.dexId) ? card.dexId : [card.dexId].filter(Boolean);
+                return dexIds.includes(speciesId);
+            })
+            .filter((card) => String(card.category || '').toLowerCase().includes('pokemon'))
             .sort((a, b) => getPriceFromCard(b) - getPriceFromCard(a));
 
         binderState.searchCache[speciesId] = cards;
+        persistCardCache();
         renderPokemonCardResults(cards);
     } catch (error) {
-        console.error('Pokemon card search error:', error);
+        console.warn('Pokemon card search error:', error);
         binderState.searchCache[speciesId] = [];
+        persistCardCache();
         renderPokemonCardResults([]);
         if (resultsStatus) resultsStatus.textContent = 'No se pudieron cargar cartas para este Pokemon.';
     }
@@ -465,10 +543,10 @@ function renderPokemonCardResults(cards) {
         const article = document.createElement('article');
         article.className = 'pokemon-card-result';
         article.innerHTML = `
-            <img src="${card.images?.small || ''}" alt="${card.name}">
+            <img src="${getCardImage(card)}" alt="${card.name}">
             <div class="pokemon-card-copy">
                 <div class="pokemon-card-name">${card.name}</div>
-                <div class="pokemon-card-meta">${card.set?.name || 'Set N/D'} · #${card.number || '--'}</div>
+                <div class="pokemon-card-meta">${card.set?.name || 'Set N/D'} · #${card.localId || '--'}</div>
                 <div class="pokemon-card-meta">${card.rarity || 'Rareza N/D'}</div>
                 <div class="pokemon-card-price">Cardmarket: ${formatMoney(price)}</div>
                 <button type="button" class="binder-btn binder-btn-primary">Asignar al hueco</button>
@@ -489,14 +567,14 @@ async function assignCardToSpecies(speciesId, card) {
         speciesName: formatSpeciesName(species.name),
         cardId: card.id,
         cardName: card.name,
-        imageSmall: card.images?.small || '',
-        imageLarge: card.images?.large || card.images?.small || '',
+        imageSmall: getCardImage(card),
+        imageLarge: getCardImage(card),
         setName: card.set?.name || 'Set N/D',
-        number: card.number || '',
+        number: card.localId || '',
         rarity: card.rarity || 'Rareza N/D',
         price: getPriceFromCard(card),
-        cardmarketUrl: card.cardmarket?.url || '',
-        updatedAt: card.cardmarket?.updatedAt || null
+        cardmarketUrl: '',
+        updatedAt: card.pricing?.cardmarket?.updated || null
     };
 
     await saveBinderEntries();
