@@ -1,4 +1,4 @@
-const VIDEOCLUB_APP_VERSION = '20260320b';
+const VIDEOCLUB_APP_VERSION = '20260320c';
 const REGION = 'eu-north-1';
 const USER_POOL_ID = 'eu-north-1_HT76kHw12';
 const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
@@ -222,6 +222,57 @@ function formatRuntime(minutes) {
 function formatMovieRating(rating) {
     const safe = Math.max(0, Math.min(5, Number(rating || 0) || 0));
     return safe ? `${'★'.repeat(safe)}${'☆'.repeat(5 - safe)}` : 'Sin nota';
+}
+
+function normalizeSearchText(value) {
+    return String(value || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^\w\s]/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function buildSearchVariants(term) {
+    const base = String(term || '').trim();
+    const normalized = normalizeSearchText(base);
+    const withoutArticle = normalized.replace(/^(el|la|los|las|un|una|unos|unas|the|a|an)\s+/i, '').trim();
+    const variants = [base, normalized, withoutArticle]
+        .filter(Boolean)
+        .filter((value, index, array) => array.indexOf(value) === index);
+    return variants.slice(0, 4);
+}
+
+function extractYearFromText(value) {
+    const match = String(value || '').match(/\b(18|19|20)\d{2}\b/);
+    return match ? Number(match[0]) : null;
+}
+
+function extractDirectorFromDescription(value) {
+    const text = String(value || '');
+    const esMatch = text.match(/dirigid[ao] por ([^.,;]+)/i);
+    if (esMatch) return esMatch[1].trim();
+    const enMatch = text.match(/directed by ([^.,;]+)/i);
+    if (enMatch) return enMatch[1].trim();
+    return '';
+}
+
+function getSourceLabel(movie) {
+    if (movie.source === 'itunes') return 'iTunes';
+    if (movie.source === 'wikipedia') return 'Wikipedia';
+    if (movie.source === 'manual') return 'Manual';
+    return 'Fuente externa';
+}
+
+function dedupeSearchResults(results) {
+    const seen = new Set();
+    return results.filter((movie) => {
+        const key = `${normalizeSearchText(movie.title)}|${movie.year || 0}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
 }
 
 function showVideoclubToast(message) {
@@ -491,7 +542,11 @@ function renderSearchResults() {
             ? `<img class="movie-result-poster" src="${escapeHtml(movie.poster)}" alt="${escapeHtml(movie.title)}" loading="lazy" decoding="async">`
             : `<div class="movie-result-poster movie-result-poster-fallback">${escapeHtml(movie.title.slice(0, 1) || '🎬')}</div>`;
         const metaBits = [movie.year, movie.genre, formatRuntime(movie.runtimeMinutes)].filter(Boolean);
-        const priceLine = movie.price !== null ? `<div class="movie-result-meta">iTunes: ${escapeHtml(formatCurrency(movie.price, movie.currency))}</div>` : '';
+        const sourceLine = `<div class="movie-result-meta">${escapeHtml(getSourceLabel(movie))}</div>`;
+        const priceLine = movie.price !== null ? `<div class="movie-result-meta">${escapeHtml(getSourceLabel(movie))}: ${escapeHtml(formatCurrency(movie.price, movie.currency))}</div>` : '';
+        const descriptionLine = !movie.creator && movie.description
+            ? `<div class="movie-result-meta">${escapeHtml(movie.description.slice(0, 90))}</div>`
+            : '';
         return `
             <article class="movie-result-card">
                 ${poster}
@@ -499,7 +554,9 @@ function renderSearchResults() {
                     <div class="movie-result-title">${escapeHtml(movie.title)}</div>
                     <div class="movie-result-meta">${escapeHtml(metaBits.join(' · ') || 'Película')}</div>
                     <div class="movie-result-meta">${escapeHtml(movie.creator || 'Sin director/estudio')}</div>
+                    ${sourceLine}
                     ${priceLine}
+                    ${descriptionLine}
                     <div class="movie-result-actions">
                         <button type="button" class="btn btn-sm" onclick="addMovieFromSearch('${escapeHtml(movie.id)}', 'watchlist')">Quiero ver</button>
                         <button type="button" class="btn btn-sm btn-primary" onclick="addMovieFromSearch('${escapeHtml(movie.id)}', 'watched')">Vista</button>
@@ -746,6 +803,84 @@ function mapItunesResult(result) {
     });
 }
 
+async function searchItunesMovies(term) {
+    const variants = buildSearchVariants(term);
+    const allResults = [];
+
+    for (const variant of variants) {
+        const url = new URL('https://itunes.apple.com/search');
+        url.searchParams.set('term', variant);
+        url.searchParams.set('media', 'movie');
+        url.searchParams.set('entity', 'movie');
+        url.searchParams.set('country', 'es');
+        url.searchParams.set('limit', '12');
+        url.searchParams.set('lang', 'es_es');
+
+        const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        if (Array.isArray(payload.results)) {
+            allResults.push(...payload.results.map(mapItunesResult).filter((movie) => movie.title));
+        }
+        if (allResults.length >= 12) break;
+    }
+
+    return dedupeSearchResults(allResults);
+}
+
+function mapWikipediaPageResult(page, language) {
+    const description = page?.terms?.description?.[0] || '';
+    return normalizeMovie({
+        id: `wikipedia:${language}:${page.pageid}`,
+        source: 'wikipedia',
+        sourceId: `${language}:${page.pageid}`,
+        title: page.title,
+        year: extractYearFromText(description || page.title),
+        creator: extractDirectorFromDescription(description),
+        genre: '',
+        description,
+        poster: page.thumbnail?.source || '',
+        status: 'watchlist',
+        rating: 0,
+        favorite: false,
+        notes: ''
+    });
+}
+
+async function searchWikipediaMovies(term, language = 'es') {
+    const variants = buildSearchVariants(term);
+    const allPages = [];
+
+    for (const variant of variants) {
+        const movieKeyword = language === 'en' ? 'film' : 'película';
+        const url = new URL(`https://${language}.wikipedia.org/w/api.php`);
+        url.searchParams.set('action', 'query');
+        url.searchParams.set('generator', 'search');
+        url.searchParams.set('gsrsearch', `${variant} ${movieKeyword}`);
+        url.searchParams.set('gsrlimit', '8');
+        url.searchParams.set('prop', 'pageimages|pageterms');
+        url.searchParams.set('piprop', 'thumbnail');
+        url.searchParams.set('pithumbsize', '500');
+        url.searchParams.set('wbptterms', 'description');
+        url.searchParams.set('format', 'json');
+        url.searchParams.set('origin', '*');
+
+        const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const pages = Object.values(payload?.query?.pages || {});
+        allPages.push(...pages.map((page) => mapWikipediaPageResult(page, language)));
+        if (allPages.length >= 8) break;
+    }
+
+    return dedupeSearchResults(
+        allPages.filter((movie) => {
+            const text = normalizeSearchText(`${movie.title} ${movie.description}`);
+            return /(pelicula|película|film|movie|documental|anime)/i.test(text) || Boolean(movie.year);
+        })
+    );
+}
+
 window.searchMovies = async () => {
     const input = document.getElementById('movie-search-input');
     const status = document.getElementById('movie-search-status');
@@ -761,20 +896,21 @@ window.searchMovies = async () => {
     if (status) status.textContent = `Buscando “${term}”...`;
 
     try {
-        const url = new URL('https://itunes.apple.com/search');
-        url.searchParams.set('term', term);
-        url.searchParams.set('media', 'movie');
-        url.searchParams.set('entity', 'movie');
-        url.searchParams.set('country', 'es');
-        url.searchParams.set('limit', '24');
-        url.searchParams.set('lang', 'es_es');
+        const results = [];
+        const itunesResults = await searchItunesMovies(term).catch(() => []);
+        results.push(...itunesResults);
 
-        const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const payload = await response.json();
-        videoclubState.searchResults = Array.isArray(payload.results)
-            ? payload.results.map(mapItunesResult).filter((movie) => movie.title)
-            : [];
+        if (results.length < 6) {
+            const wikiEsResults = await searchWikipediaMovies(term, 'es').catch(() => []);
+            results.push(...wikiEsResults);
+        }
+
+        if (results.length < 4) {
+            const wikiEnResults = await searchWikipediaMovies(term, 'en').catch(() => []);
+            results.push(...wikiEnResults);
+        }
+
+        videoclubState.searchResults = dedupeSearchResults(results).slice(0, 18);
 
         if (!videoclubState.searchResults.length && status) {
             status.textContent = 'No he encontrado resultados. Puedes probar otro término o añadirla manualmente.';

@@ -62,7 +62,7 @@ const initialMagicCards = [
 
 const today = new Date();
 const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-const APP_VERSION = '20260320b';
+const APP_VERSION = '20260320c';
 const LOGIN_URL = window.appSession?.loginUrl || 'https://networknormon.github.io/life_savings/login.html';
 const MONTH_NAMES_ES = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
