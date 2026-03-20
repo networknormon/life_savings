@@ -226,8 +226,18 @@ const USER_POOL_ID = 'eu-north-1_HT76kHw12';
 const IDENTITY_POOL_ID = 'eu-north-1:d5157883-71f1-475b-8e0e-9774ab7607de';
 
 AWS.config.region = REGION;
-const docClient = new AWS.DynamoDB.DocumentClient();
+let docClient = null;
 let dbUserId = null;
+
+function getDocClient() {
+    if (!docClient) {
+        docClient = new AWS.DynamoDB.DocumentClient({
+            region: REGION,
+            credentials: AWS.config.credentials
+        });
+    }
+    return docClient;
+}
 
 function getStoredToken() {
     return localStorage.getItem('cognito_id_token') || '';
@@ -416,6 +426,7 @@ function configureAwsCredentials() {
             [`cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`]: token
         } : {}
     });
+    docClient = null;
 }
 
 function canSyncCloud() {
@@ -500,7 +511,7 @@ function persistSnapshotToCloud(snapshot, onDone = null) {
         }
     };
 
-    docClient.update(params, (err) => {
+    getDocClient().update(params, (err) => {
         if (err) {
             console.error('Error subiendo datos:', err);
             runtimeState.cloudSyncEnabled = false;
@@ -542,7 +553,7 @@ function saveToDynamo() {
 function loadDataFromDynamo() {
     if (!dbUserId) return;
     const params = { TableName: 'ColeccionesData', Key: { userId: dbUserId } };
-    docClient.get(params, (err, data) => {
+    getDocClient().get(params, (err, data) => {
         if (err) {
             console.error('Error descargando datos:', err);
             runtimeState.cloudSyncEnabled = false;
