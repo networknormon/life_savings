@@ -1,13 +1,10 @@
-const CACHE_VERSION = 'life-savings-v20260313d';
+const CACHE_VERSION = 'life-savings-v20260320a';
 const APP_SHELL = [
     './',
     './index.html',
-    './index.html?v=20260313d',
-    './style.css?v=20260313d',
-    './script.js?v=20260313d',
-    './pokemon-binder.html?v=20260313d',
-    './pokemon-binder.css?v=20260313d',
-    './pokemon-binder.js?v=20260313d',
+    './index.html?v=20260320a',
+    './style.css?v=20260320a',
+    './script.js?v=20260320a',
     './manifest.json',
     './icon-192.png',
     './icon-512.png',

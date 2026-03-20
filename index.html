@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260313d">
+    <link rel="stylesheet" href="style.css?v=20260320a">
 
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d2b45">
@@ -87,105 +87,36 @@
     <main class="container app-shell">
         <section id="session-banner" class="session-banner hidden" aria-live="polite"></section>
 
-        <section class="dashboard-shell" aria-label="dashboard principal">
-            <article class="card dashboard-hero-card">
-                <div class="dashboard-copy">
-                    <p class="dashboard-kicker">Dashboard central</p>
-                    <h2>Finanzas, colecciones y objetivos en una sola portada.</h2>
-                    <p id="dashboard-headline" class="dashboard-headline">Calculando tu hoja de ruta del mes...</p>
+        <section class="card finance-hero" aria-label="resumen financiero">
+            <div class="finance-hero-copy">
+                <p class="dashboard-kicker">Finanzas simples</p>
+                <h2>Hoja mensual de ingresos, gastos y compras.</h2>
+                <p id="dashboard-headline" class="dashboard-headline">Calculando el balance del mes actual.</p>
+            </div>
+            <div class="today-header">
+                <div>
+                    <p class="dashboard-kicker">Resumen rápido</p>
+                    <h3>Qué toca este mes</h3>
                 </div>
-                <div class="dashboard-actions">
-                    <div class="dashboard-search">
-                        <input type="text" id="global-search-input" class="dashboard-search-input" placeholder="Busca mangas, juegos, cartas, gastos o Pokemon">
-                        <button type="button" class="btn btn-primary" onclick="runGlobalSearch()">Buscar</button>
-                        <button type="button" class="btn" onclick="clearGlobalSearch()">Limpiar</button>
-                    </div>
-                    <div class="dashboard-tool-row">
-                        <button type="button" class="btn" onclick="exportDataJson()">Exportar JSON</button>
-                        <button type="button" class="btn" onclick="triggerImportDataJson()">Importar JSON</button>
-                        <button type="button" class="btn" onclick="reconnectSession()">Reconectar</button>
-                        <input type="file" id="import-json-input" accept="application/json" hidden>
-                    </div>
-                    <div id="global-search-results" class="global-search-results"></div>
-                </div>
-            </article>
-
-            <article class="card today-card">
-                <div class="today-header">
-                    <div>
-                        <p class="dashboard-kicker">Qué toca hoy</p>
-                        <h3>Tu panel de decisiones rápidas</h3>
-                    </div>
-                    <span id="today-sync-state" class="today-sync-state">Modo local</span>
-                </div>
-                <div class="today-grid">
-                    <article class="today-stat">
-                        <span>Disponible para hobby</span>
-                        <strong id="today-spend">€0.00</strong>
-                        <p id="today-spend-note">En cuanto carguen los datos te digo cuánto puedes usar.</p>
-                    </article>
-                    <article class="today-stat">
-                        <span>Colección prioritaria</span>
-                        <strong id="today-collection">Sin datos</strong>
-                        <p id="today-collection-note">Mirando la próxima compra lógica.</p>
-                    </article>
-                    <article class="today-stat">
-                        <span>Juego o carta más cerca</span>
-                        <strong id="today-nearest">Sin datos</strong>
-                        <p id="today-nearest-note">Buscando el siguiente objetivo alcanzable.</p>
-                    </article>
-                </div>
-            </article>
-        </section>
-
-        <section class="module-grid" aria-label="módulos principales">
-            <article class="module-card module-finance">
-                <div class="module-copy">
-                    <p class="module-kicker">Módulo</p>
-                    <h3>Finanzas</h3>
-                    <p id="module-finance-copy">Ingresos, gasto y ahorro del mes.</p>
-                </div>
-                <div class="module-footer">
-                    <strong id="module-finance-stat">€0.00</strong>
-                    <button type="button" class="btn btn-sm" onclick="scrollToSection('finance-section')">Abrir</button>
-                </div>
-            </article>
-
-            <article class="module-card module-manga">
-                <div class="module-copy">
-                    <p class="module-kicker">Módulo</p>
-                    <h3>Manga</h3>
-                    <p id="module-manga-copy">Tomos pendientes y progreso real.</p>
-                </div>
-                <div class="module-footer">
-                    <strong id="module-manga-stat">0 pendientes</strong>
-                    <button type="button" class="btn btn-sm" onclick="scrollToSection('collections-section')">Abrir</button>
-                </div>
-            </article>
-
-            <article class="module-card module-gaming">
-                <div class="module-copy">
-                    <p class="module-kicker">Módulo</p>
-                    <h3>Gaming</h3>
-                    <p id="module-gaming-copy">Tu shelf y las oportunidades activas.</p>
-                </div>
-                <div class="module-footer">
-                    <strong id="module-gaming-stat">0 juegos</strong>
-                    <button type="button" class="btn btn-sm" onclick="scrollToSection('gaming-section')">Abrir</button>
-                </div>
-            </article>
-
-            <article class="module-card module-pokemon">
-                <div class="module-copy">
-                    <p class="module-kicker">Módulo</p>
-                    <h3>Pokemon Binder</h3>
-                    <p id="module-pokemon-copy">Huecos asignados y acceso directo al binder.</p>
-                </div>
-                <div class="module-footer">
-                    <strong id="module-pokemon-stat">0 cartas</strong>
-                    <a href="pokemon-binder.html?v=20260313d" class="btn btn-sm">Entrar</a>
-                </div>
-            </article>
+                <span id="today-sync-state" class="today-sync-state">Modo local</span>
+            </div>
+            <div class="today-grid">
+                <article class="today-stat">
+                    <span>Disponible para hobby</span>
+                    <strong id="today-spend">€0.00</strong>
+                    <p id="today-spend-note">Calculando el margen mensual.</p>
+                </article>
+                <article class="today-stat">
+                    <span>Colección prioritaria</span>
+                    <strong id="today-collection">Sin datos</strong>
+                    <p id="today-collection-note">Mirando la próxima compra lógica.</p>
+                </article>
+                <article class="today-stat">
+                    <span>Siguiente objetivo</span>
+                    <strong id="today-nearest">Sin datos</strong>
+                    <p id="today-nearest-note">Buscando la siguiente compra razonable.</p>
+                </article>
+            </div>
         </section>
 
         <section class="quick-stats" aria-label="resumen rápido">
@@ -207,173 +138,132 @@
             </article>
         </section>
 
-        <section class="portal-links" aria-label="accesos rápidos">
-            <a href="pokemon-binder.html?v=20260313d" class="card portal-card portal-link">
-                <div>
-                    <p class="portal-kicker">Modulo separado</p>
-                    <h2>Pokemon Virtual Binder</h2>
-                    <span>Accede a páginas por Pokédex, generación, tipo o set desde su propia vista</span>
-                </div>
-                <strong>Entrar</strong>
-            </a>
-        </section>
-
-        <section class="card history-card" aria-label="historial mensual">
-            <div class="history-header">
-                <div>
-                    <p class="dashboard-kicker">Historial visual</p>
-                    <h2>Cómo va este mes frente al anterior</h2>
-                </div>
-                <p id="history-summary" class="history-summary">Preparando comparativa mensual...</p>
-            </div>
-            <div class="history-layout">
-                <div class="history-chart-wrap">
-                    <canvas id="monthly-history-chart" aria-label="Gráfico del historial mensual"></canvas>
-                </div>
-                <div id="history-comparison-grid" class="history-comparison-grid"></div>
-            </div>
-        </section>
-
-        <section class="card notification-card" aria-label="notificaciones suaves">
-            <div class="notification-header">
-                <div>
-                    <p class="dashboard-kicker">Recordatorios suaves</p>
-                    <h2>Señales útiles sin saturarte</h2>
-                </div>
-                <span id="notification-state" class="notification-state">Analizando</span>
-            </div>
-            <div id="notification-feed" class="notification-feed"></div>
-        </section>
-
         <section id="finance-section" class="finance-panel" aria-label="panel financiero">
             <div class="finance-toolbar card">
-                <h2>📅 Finanzas del Mes</h2>
-                <div class="month-picker" aria-label="selector de fecha">
-                    <button type="button" class="btn btn-sm month-nav-btn" onclick="navigateMonth(-1)" aria-label="Mes anterior">←</button>
-                    <select id="month-selector" class="month-select" onchange="onYearMonthSelectorChange()" aria-label="Seleccionar mes"></select>
-                    <select id="year-selector" class="month-select year-select" onchange="onYearMonthSelectorChange()" aria-label="Seleccionar año"></select>
-                    <button type="button" class="btn btn-sm month-nav-btn" onclick="navigateMonth(1)" aria-label="Mes siguiente">→</button>
+                <div>
+                    <p class="dashboard-kicker">Hoja mensual</p>
+                    <h2>Finanzas del Mes</h2>
                 </div>
-            </div>
-
-            <div class="inputs-grid">
-                <div class="card input-card">
-                    <label for="salary">Ingresos Mensuales</label>
-                    <div class="input-wrapper">
-                        <span aria-hidden="true">€</span>
-                        <input type="number" id="salary" min="0" step="0.01" onchange="updateSalary(this.value)">
+                <div class="finance-toolbar-actions">
+                    <div class="month-picker" aria-label="selector de fecha">
+                        <button type="button" class="btn btn-sm month-nav-btn" onclick="navigateMonth(-1)" aria-label="Mes anterior">←</button>
+                        <select id="month-selector" class="month-select" onchange="onYearMonthSelectorChange()" aria-label="Seleccionar mes"></select>
+                        <select id="year-selector" class="month-select year-select" onchange="onYearMonthSelectorChange()" aria-label="Seleccionar año"></select>
+                        <button type="button" class="btn btn-sm month-nav-btn" onclick="navigateMonth(1)" aria-label="Mes siguiente">→</button>
                     </div>
-                </div>
-
-                <div class="card input-card expense-card">
-                    <div class="card-title-row">
-                        <label class="no-margin">Gastos Fijos</label>
-                        <button type="button" class="btn btn-sm" onclick="togglePanel('fixed-panel', this)" aria-expanded="false">Editar</button>
-                    </div>
-                    <div class="input-wrapper minus">
-                        <span aria-hidden="true">€</span>
-                        <span id="total-fixed-display" class="total-value">0.00</span>
-                    </div>
-                    <div id="fixed-panel" class="panel-editor">
-                        <div id="fixed-list" class="expense-list" role="list"></div>
-                        <div class="editor-controls">
-                            <div class="editor-row">
-                                <input type="text" id="new-fixed-name" placeholder="Ej. Internet" autocomplete="off">
-                                <input type="number" id="new-fixed-amount" placeholder="€" min="0" step="0.01">
-                            </div>
-                            <button type="button" class="btn btn-primary btn-block" onclick="addExpense('fixed')">+ Añadir fijo</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card input-card expense-card">
-                    <div class="card-title-row">
-                        <label class="no-margin">Gastos Variables</label>
-                        <button type="button" class="btn btn-sm" onclick="togglePanel('variable-panel', this)" aria-expanded="false">Editar</button>
-                    </div>
-                    <div class="input-wrapper minus">
-                        <span aria-hidden="true">€</span>
-                        <span id="total-variable-display" class="total-value">0.00</span>
-                    </div>
-                    <div id="variable-panel" class="panel-editor">
-                        <div id="variable-list" class="expense-list" role="list"></div>
-                        <div class="editor-controls">
-                            <div class="editor-row">
-                                <input type="text" id="new-variable-name" placeholder="Ej. Comida" autocomplete="off">
-                                <input type="number" id="new-variable-amount" placeholder="€" min="0" step="0.01">
-                            </div>
-                            <button type="button" class="btn btn-primary btn-block" onclick="addExpense('variable')">+ Añadir variable</button>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card slider-card">
-                    <div class="slider-header">
-                        <label for="allocation">Inversión Mensual</label>
-                        <span id="allocation-display">30%</span>
-                    </div>
-                    <input type="range" id="allocation" min="0" max="100" value="30" onchange="updateAllocation(this.value)">
-                    <div class="slider-footer">
-                        Disponible: <span id="hobby-budget">€0.00</span>
+                    <div class="dashboard-tool-row">
+                        <button type="button" class="btn btn-sm" onclick="exportDataJson()">Exportar JSON</button>
+                        <button type="button" class="btn btn-sm" onclick="triggerImportDataJson()">Importar JSON</button>
+                        <button type="button" class="btn btn-sm" onclick="reconnectSession()">Reconectar</button>
+                        <input type="file" id="import-json-input" accept="application/json" hidden>
                     </div>
                 </div>
             </div>
 
-            <div class="strategy-box">
-                <div class="strategy-icon" aria-hidden="true">🐷</div>
-                <div class="strategy-text">
-                    <h3>Plan de Ataque</h3>
-                    <p>
-                        Para el Master Set de Magic (<span id="magic-cost">€0</span>), guarda
-                        <strong class="text-green" id="savings-suggestion">€0</strong> en la hucha.
-                        Usa los <strong class="text-blue" id="spending-money">€0</strong> restantes para mangas sueltos.
-                    </p>
-                    <div class="strategy-time">Tiempo estimado: <span id="months-to-finish">--</span> meses</div>
-                </div>
+            <div class="finance-sheet-layout">
+                <article class="card finance-sheet-card">
+                    <div class="finance-sheet-header">
+                        <div>
+                            <p class="dashboard-kicker">Vista tipo hoja de cálculo</p>
+                            <h3>Entradas del mes</h3>
+                        </div>
+                        <div class="finance-sheet-salary">
+                            <label for="salary">Ingresos mensuales</label>
+                            <div class="sheet-salary-input">
+                                <span>€</span>
+                                <input type="number" id="salary" min="0" step="0.01" onchange="updateSalary(this.value)">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="finance-sheet-table-wrap">
+                        <table class="finance-sheet-table">
+                            <thead>
+                                <tr>
+                                    <th>Concepto</th>
+                                    <th>Tipo</th>
+                                    <th>Importe</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="finance-sheet-body"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="sheet-add-row">
+                        <input type="text" id="sheet-new-name" placeholder="Nuevo concepto">
+                        <select id="sheet-new-type">
+                            <option value="fixed">Fijo</option>
+                            <option value="variable">Variable</option>
+                        </select>
+                        <input type="number" id="sheet-new-amount" placeholder="0.00" min="0" step="0.01">
+                        <button type="button" class="btn btn-primary" onclick="addSheetExpense()">Añadir fila</button>
+                    </div>
+                </article>
+
+                <aside class="card finance-side-card">
+                    <div class="finance-side-block">
+                        <p class="dashboard-kicker">Totales</p>
+                        <div class="sheet-metric-row">
+                            <span>Gastos fijos</span>
+                            <strong id="total-fixed-display">€0.00</strong>
+                        </div>
+                        <div class="sheet-metric-row">
+                            <span>Gastos variables</span>
+                            <strong id="total-variable-display">€0.00</strong>
+                        </div>
+                        <div class="sheet-metric-row">
+                            <span>Libre tras gastos</span>
+                            <strong id="finance-balance-display">€0.00</strong>
+                        </div>
+                        <div class="sheet-metric-row">
+                            <span>Presupuesto hobby</span>
+                            <strong id="hobby-budget">€0.00</strong>
+                        </div>
+                        <div class="sheet-metric-row sheet-metric-row-input">
+                            <label for="allocation">Porcentaje hobby</label>
+                            <div class="sheet-inline-input">
+                                <input type="number" id="allocation" min="0" max="100" step="1" onchange="updateAllocation(this.value)">
+                                <span id="allocation-display">30%</span>
+                            </div>
+                        </div>
+                        <div class="sheet-metric-row">
+                            <span>Ahorro sugerido</span>
+                            <strong id="month-savings-display">€0.00</strong>
+                        </div>
+                    </div>
+
+                    <div class="finance-side-block">
+                        <p class="dashboard-kicker">Plan simple</p>
+                        <p class="finance-plan-copy">
+                            Magic pendiente: <strong id="magic-cost">€0.00</strong><br>
+                            Reserva recomendada: <strong id="savings-suggestion">€0.00</strong><br>
+                            Disponible para compras: <strong id="spending-money">€0.00</strong><br>
+                            Ritmo estimado: <strong id="months-to-finish">--</strong> meses
+                        </p>
+                    </div>
+
+                    <div class="finance-side-block">
+                        <p class="dashboard-kicker">Comparativa mensual</p>
+                        <p id="history-summary" class="history-summary">Preparando comparativa simple...</p>
+                        <table class="mini-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Mes</th>
+                                    <th>Ahorro</th>
+                                    <th>Hobby</th>
+                                </tr>
+                            </thead>
+                            <tbody id="monthly-summary-table-body"></tbody>
+                        </table>
+                    </div>
+                </aside>
             </div>
         </section>
 
         <section id="collections-section">
             <h2 class="section-title">Colecciones</h2>
             <div id="collections-container" class="collections-grid"></div>
-        </section>
-
-        <section id="gaming-section" class="gaming-section">
-            <div class="gaming-header">
-                <h2 class="section-title">Gaming Collection</h2>
-                <p class="gaming-subtitle">Busca y añade juegos con portada y precio en tiempo real</p>
-            </div>
-
-            <div class="card gaming-search-card">
-                <div class="gaming-search-row">
-                    <input type="text" id="game-search-input" class="game-search-input" placeholder="Ej. Elden Ring, Hollow Knight..." autocomplete="off">
-                    <button type="button" class="btn btn-primary" onclick="searchGames()">Buscar</button>
-                    <button type="button" class="btn" onclick="refreshGamingPrices()">Actualizar precios</button>
-                    <button type="button" class="btn" onclick="toggleManualGamePanel()">Añadir manual</button>
-                </div>
-                <div id="game-search-status" class="gaming-status" aria-live="polite"></div>
-                <div id="game-search-results" class="game-search-results"></div>
-
-                <div id="manual-game-panel" class="manual-game-panel hidden">
-                    <div class="manual-grid">
-                        <input type="text" id="manual-game-title" class="game-search-input" placeholder="Título (ej: Final Fantasy I・II Premium Package)">
-                        <input type="text" id="manual-game-platform" class="game-search-input" placeholder="Plataforma (Switch, PS1, etc.)">
-                        <input type="text" id="manual-game-region" class="game-search-input" placeholder="Región/edición (JP, NTSC-J, Premium...)">
-                        <input type="number" id="manual-game-price" class="game-search-input" placeholder="Precio actual en €" min="0" step="0.01">
-                        <input type="text" id="manual-game-cover" class="game-search-input" placeholder="URL portada (opcional)">
-                        <input type="text" id="manual-game-alias" class="game-search-input" placeholder="Alias de búsqueda (opcional, ej: ff i ii)">
-                    </div>
-                    <button type="button" class="btn btn-primary" onclick="addManualGame()">Guardar juego manual</button>
-                </div>
-            </div>
-
-            <div class="card gaming-shelf-card">
-                <div class="gaming-shelf-header">
-                    <h3>🎮 Tu estantería</h3>
-                    <span id="gaming-count" class="badge neutral">0 juegos</span>
-                </div>
-                <div id="gaming-shelf" class="gaming-shelf"></div>
-            </div>
         </section>
     </main>
 
@@ -382,13 +272,13 @@
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js?v=20260313d')
+                navigator.serviceWorker.register('sw.js?v=20260320a')
                     .then(reg => console.log('Service Worker registrado', reg))
                     .catch(err => console.log('Fallo al registrar Service Worker', err));
             });
         }
     </script>
 
-    <script src="script.js?v=20260313d"></script>
+    <script src="script.js?v=20260320a"></script>
 </body>
 </html>

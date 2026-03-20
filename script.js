@@ -1,23 +1,3 @@
-// --- CARGA DINÁMICA DE CHART.JS ---
-const chartScript = document.createElement('script');
-chartScript.src = "https://cdn.jsdelivr.net/npm/chart.js";
-window.ChartReadyQueue = window.ChartReadyQueue || [];
-chartScript.onload = () => {
-    while (window.ChartReadyQueue.length) {
-        const callback = window.ChartReadyQueue.shift();
-        if (typeof callback === 'function') callback();
-    }
-};
-document.head.appendChild(chartScript);
-
-function onChartReady(callback) {
-    if (typeof window.Chart !== 'undefined') {
-        callback();
-    } else {
-        window.ChartReadyQueue.push(callback);
-    }
-}
-
 // --- DATOS INICIALES Y HELPER ---
 function generateOwned(total, ownedCount) {
     return Array(total).fill(false).map((_, i) => i < ownedCount);
@@ -82,9 +62,8 @@ const initialMagicCards = [
 
 const today = new Date();
 const defaultMonthStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-const APP_VERSION = '20260313d';
+const APP_VERSION = '20260320a';
 const LOGIN_URL = window.appSession?.loginUrl || 'https://networknormon.github.io/life_savings/login.html';
-const POKEMON_BINDER_URL = `pokemon-binder.html?v=${APP_VERSION}`;
 const MONTH_NAMES_ES = [
     'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
@@ -92,7 +71,6 @@ const MONTH_NAMES_ES = [
 const LOCAL_STORAGE_KEYS = {
     backup: 'life-savings-app-backup-v1',
     pendingSync: 'life-savings-cloud-pending-v1',
-    binderEntries: 'pokemon-binder-entries-v1',
     financeSnapshots: 'life-savings-price-snapshots-v1'
 };
 
@@ -110,8 +88,7 @@ let appData = {
     },
     collections: [
         { id: 1, name: "Magic: FF Master Set", publisher: "Wizards", type: "cards", items: initialMagicCards, ownedList: Array(45).fill(false), expanded: false, theme: "purple", icon: "🔮", priority: 3 },
-        // { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 },
-        { id: 5, name: "Slam Dunk", publisher: "Ivrea", type: "manga", totalItems: 20, ownedList: generateOwned(20, 1), pricePerItem: 14.25, expanded: false, theme: "col-theme-orange", icon: "🏀⛹🏻‍♂️", folder: "SlamDunk", ext: "webp", priority: 3 }
+        { id: 2, name: "Vagabond", publisher: "Ivrea", type: "manga", totalItems: 37, ownedList: generateOwned(37, 2), pricePerItem: 7.60, expanded: false, theme: "col-theme-stone", icon: "🗡️", folder: "Vagabond", ext: "jpg", priority: 1 }
     ],
     gaming: {
         items: [],
@@ -150,23 +127,6 @@ const mangaViewerState = {
 let mangaPullTimeout = null;
 let activePulledBookEl = null;
 let bookTransitionTimeout = null;
-
-const BUILTIN_GAME_ALIASES = {
-    'final fantasy i ii premium package': [
-        'final fantasy 1 2 premium package',
-        'final fantasy i ii',
-        'final fantasy 1 2',
-        'ff i ii',
-        'ff 1 2',
-        'pixel remaster'
-    ],
-    "chocobo's dungeon": [
-        'chocobos mystery dungeon',
-        'chocobo mystery dungeon',
-        'chocobo',
-        'every buddy'
-    ]
-};
 
 function clamp(value, min, max) {
     return Math.max(min, Math.min(max, value));
@@ -307,8 +267,8 @@ function buildFinanceSaveObject() {
         savingsGoal: appData.savingsGoal,
         currentMonth: appData.currentMonth,
         monthlyData: appData.monthlyData,
-        gamingCollection: appData.gaming.items,
-        gamingAliases: appData.gaming.aliases
+        gamingCollection: [],
+        gamingAliases: {}
     };
 }
 
@@ -428,10 +388,8 @@ function applySavedFinances(finances = {}) {
         };
     }
 
-    appData.gaming.items = Array.isArray(finances.gamingCollection) ? finances.gamingCollection : [];
-    appData.gaming.aliases = finances.gamingAliases && typeof finances.gamingAliases === 'object'
-        ? finances.gamingAliases
-        : {};
+    appData.gaming.items = [];
+    appData.gaming.aliases = {};
 
     if (!appData.monthlyData[appData.currentMonth]) createNewMonthProfile(appData.currentMonth);
     if (!appData.monthlyData[defaultMonthStr]) createNewMonthProfile(defaultMonthStr);
@@ -716,43 +674,18 @@ document.addEventListener('DOMContentLoaded', () => {
         actionSlot.appendChild(summaryBtn);
     }
 
-    const enterAddBindings = [
-        { id: 'new-fixed-name', type: 'fixed' },
-        { id: 'new-fixed-amount', type: 'fixed' },
-        { id: 'new-variable-name', type: 'variable' },
-        { id: 'new-variable-amount', type: 'variable' }
-    ];
+    const enterAddBindings = ['sheet-new-name', 'sheet-new-amount', 'sheet-new-type'];
 
     enterAddBindings.forEach(binding => {
-        const el = document.getElementById(binding.id);
+        const el = document.getElementById(binding);
         if (!el) return;
         el.addEventListener('keydown', (ev) => {
             if (ev.key === 'Enter') {
                 ev.preventDefault();
-                addExpense(binding.type);
+                addSheetExpense();
             }
         });
     });
-
-    const gameSearchInput = document.getElementById('game-search-input');
-    if (gameSearchInput) {
-        gameSearchInput.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter') {
-                ev.preventDefault();
-                searchGames();
-            }
-        });
-    }
-
-    const globalSearchInput = document.getElementById('global-search-input');
-    if (globalSearchInput) {
-        globalSearchInput.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter') {
-                ev.preventDefault();
-                runGlobalSearch();
-            }
-        });
-    }
 
     const importInput = document.getElementById('import-json-input');
     if (importInput) {
@@ -774,22 +707,6 @@ document.addEventListener('DOMContentLoaded', () => {
     updateAllUI();
     initializeCloudSession();
 });
-
-
-function scrollToSection(sectionId) {
-    const target = document.getElementById(sectionId);
-    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-}
-
-window.scrollToSection = scrollToSection;
-
-function getBinderEntriesSnapshot() {
-    try {
-        return JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEYS.binderEntries) || '{}');
-    } catch {
-        return {};
-    }
-}
 
 function getCollectionById(collectionId) {
     return appData.collections.find((collection) => collection.id === collectionId) || null;
@@ -853,160 +770,6 @@ function getCheapestMissingMagicCard() {
         .sort((a, b) => a.item.price - b.item.price)[0] || null;
 }
 
-function getCheapestGameTarget() {
-    return [...(appData.gaming.items || [])]
-        .filter((item) => Number(item.currentPrice || 0) > 0)
-        .sort((a, b) => Number(a.currentPrice || 0) - Number(b.currentPrice || 0))[0] || null;
-}
-
-function buildSearchIndex() {
-    const results = [];
-
-    appData.collections.forEach((collection) => {
-        results.push({
-            kind: 'collection',
-            title: collection.name,
-            subtitle: `${collection.publisher} · ${collection.type === 'cards' ? 'Cartas' : 'Manga'}`,
-            meta: 'Colección',
-            action: () => {
-                if (!collection.expanded) collection.expanded = true;
-                renderCollections();
-                scrollToSection('collections-section');
-                setTimeout(() => document.getElementById(`col-${collection.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 120);
-            }
-        });
-
-        if (collection.type === 'cards') {
-            collection.items.forEach((item, index) => {
-                results.push({
-                    kind: 'mtg',
-                    title: item.name,
-                    subtitle: `${collection.name} · ${formatMoney(item.price)}`,
-                    meta: 'Carta Magic',
-                    action: () => {
-                        if (!collection.expanded) collection.expanded = true;
-                        renderCollections();
-                        scrollToSection('collections-section');
-                        setTimeout(() => openMtgViewer(collection.id, index), 120);
-                    }
-                });
-            });
-        } else {
-            collection.ownedList.forEach((owned, index) => {
-                results.push({
-                    kind: 'manga',
-                    title: `${collection.name} #${index + 1}`,
-                    subtitle: `${owned ? 'Comprado' : 'Pendiente'} · ${formatMoney(collection.pricePerItem)}`,
-                    meta: 'Manga',
-                    action: () => {
-                        if (!collection.expanded) collection.expanded = true;
-                        renderCollections();
-                        scrollToSection('collections-section');
-                        setTimeout(() => openMangaViewer(collection.id, index), 120);
-                    }
-                });
-            });
-        }
-    });
-
-    (appData.gaming.items || []).forEach((game) => {
-        results.push({
-            kind: 'gaming',
-            title: game.title,
-            subtitle: `${game.platform || 'N/D'} · ${formatMoney(game.currentPrice || 0)}`,
-            meta: 'Gaming',
-            action: () => scrollToSection('gaming-section')
-        });
-    });
-
-    Object.entries(appData.monthlyData).forEach(([monthKey, monthData]) => {
-        ['fixedExpenses', 'variableExpenses'].forEach((group) => {
-            (monthData[group] || []).forEach((expense) => {
-                results.push({
-                    kind: 'expense',
-                    title: expense.name,
-                    subtitle: `${monthKey} · ${formatMoney(expense.amount)}`,
-                    meta: group === 'fixedExpenses' ? 'Gasto fijo' : 'Gasto variable',
-                    action: () => scrollToSection('finance-section')
-                });
-            });
-        });
-    });
-
-    const binderEntries = getBinderEntriesSnapshot();
-    Object.values(binderEntries).forEach((entry) => {
-        results.push({
-            kind: 'pokemon',
-            title: entry.speciesName || entry.cardName || 'Pokemon',
-            subtitle: `${entry.cardName || 'Sin carta'} · ${entry.setName || 'Sin set'}`,
-            meta: 'Pokemon Binder',
-            action: () => {
-                const speciesId = Number(entry.speciesId || 0);
-                window.location.href = `${POKEMON_BINDER_URL}&species=${speciesId}`;
-            }
-        });
-    });
-
-    return results;
-}
-
-function renderGlobalSearchResults(items, query) {
-    const container = document.getElementById('global-search-results');
-    if (!container) return;
-
-    if (!query) {
-        container.innerHTML = '';
-        return;
-    }
-
-    if (!items.length) {
-        container.innerHTML = '<div class="global-search-empty">No encontré coincidencias en finanzas, manga, gaming o binder.</div>';
-        return;
-    }
-
-    const grid = document.createElement('div');
-    grid.className = 'search-result-grid';
-
-    items.forEach((item) => {
-        const card = document.createElement('article');
-        card.className = 'search-result-card';
-        card.innerHTML = `
-            <span class="search-result-meta">${escapeHtml(item.meta)}</span>
-            <strong>${escapeHtml(item.title)}</strong>
-            <p>${escapeHtml(item.subtitle)}</p>
-            <button type="button" class="btn btn-sm">Abrir</button>
-        `;
-        card.querySelector('button').addEventListener('click', item.action);
-        grid.appendChild(card);
-    });
-
-    container.innerHTML = '';
-    container.appendChild(grid);
-}
-
-window.runGlobalSearch = () => {
-    const input = document.getElementById('global-search-input');
-    if (!input) return;
-    const query = input.value.trim();
-    if (!query) {
-        renderGlobalSearchResults([], '');
-        return;
-    }
-
-    const normalized = normalizeGameTitle(query);
-    const matches = buildSearchIndex()
-        .filter((item) => normalizeGameTitle(`${item.title} ${item.subtitle} ${item.meta}`).includes(normalized))
-        .slice(0, 12);
-
-    renderGlobalSearchResults(matches, query);
-};
-
-window.clearGlobalSearch = () => {
-    const input = document.getElementById('global-search-input');
-    if (input) input.value = '';
-    renderGlobalSearchResults([], '');
-};
-
 window.triggerImportDataJson = () => {
     document.getElementById('import-json-input')?.click();
 };
@@ -1015,8 +778,7 @@ window.exportDataJson = () => {
     const exportPayload = {
         version: 2,
         exportedAt: new Date().toISOString(),
-        app: buildPersistedSnapshot(),
-        pokemonBinder: getBinderEntriesSnapshot()
+        app: buildPersistedSnapshot()
     };
 
     const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
@@ -1041,10 +803,6 @@ function importDataJsonFromFile(event) {
 
             applyPersistedSnapshot(parsed.app);
             persistLocalBackup(buildPersistedSnapshot());
-
-            if (parsed.pokemonBinder && typeof parsed.pokemonBinder === 'object') {
-                localStorage.setItem(LOCAL_STORAGE_KEYS.binderEntries, JSON.stringify(parsed.pokemonBinder));
-            }
 
             updateAllUI();
             saveToDynamo();
@@ -1182,305 +940,104 @@ window.setExactSavings = (val) => {
 
 function renderExpenseLists() {
     const curData = appData.monthlyData[appData.currentMonth];
-    const renderList = (type, array) => {
-        const container = document.getElementById(`${type}-list`);
-        let total = 0;
-        container.innerHTML = '';
-        array.forEach(item => {
-            total += item.amount;
-            const row = document.createElement('div');
-            row.className = 'expense-item';
+    const tableBody = document.getElementById('finance-sheet-body');
+    const rows = [
+        ...(curData.fixedExpenses || []).map((item) => ({ ...item, type: 'fixed' })),
+        ...(curData.variableExpenses || []).map((item) => ({ ...item, type: 'variable' }))
+    ].sort((a, b) => a.type.localeCompare(b.type) || a.name.localeCompare(b.name));
 
-            const name = document.createElement('span');
-            name.className = 'expense-item-name';
-            name.textContent = item.name;
+    let totalFixed = 0;
+    let totalVar = 0;
 
-            const meta = document.createElement('div');
-            meta.className = 'expense-item-meta';
-
-            const price = document.createElement('span');
-            price.className = 'expense-item-price';
-            price.textContent = formatMoney(item.amount);
-
-            const removeBtn = document.createElement('button');
-            removeBtn.type = 'button';
-            removeBtn.className = 'btn-icon-danger';
-            removeBtn.textContent = '×';
-            removeBtn.ariaLabel = `Eliminar gasto ${item.name}`;
-            removeBtn.onclick = () => removeExpense(type, item.id);
-
-            meta.appendChild(price);
-            meta.appendChild(removeBtn);
-            row.appendChild(name);
-            row.appendChild(meta);
-            container.appendChild(row);
-        });
-        document.getElementById(`total-${type}-display`).innerText = total.toFixed(2);
-        return total;
-    };
-    return { totalFixed: renderList('fixed', curData.fixedExpenses), totalVar: renderList('variable', curData.variableExpenses) };
-}
-
-// --- RENDERIZADO VISUAL Y GRÁFICOS ---
-const formatMoney = (amount) => { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount); };
-
-let mainChart = null;
-let historyChart = null;
-function drawDonutChart(fixed, variable, savings, hobbies) {
-    const stratBox = document.querySelector('.strategy-box');
-    stratBox.style.flexWrap = 'wrap'; 
-    stratBox.style.justifyContent = 'space-between';
-    
-    let chartContainer = document.getElementById('chart-container');
-    if (!chartContainer) {
-        chartContainer = document.createElement('div');
-        chartContainer.id = 'chart-container';
-        chartContainer.style.width = '220px';
-        chartContainer.style.height = '220px';
-        chartContainer.style.margin = '0 auto';
-        chartContainer.innerHTML = '<canvas id="financeChart"></canvas>';
-        stratBox.appendChild(chartContainer);
+    if (tableBody) {
+        tableBody.innerHTML = '';
     }
 
-    const ctx = document.getElementById('financeChart');
-    if (!ctx) return;
+    rows.forEach((rowItem) => {
+        if (rowItem.type === 'fixed') totalFixed += Number(rowItem.amount || 0);
+        if (rowItem.type === 'variable') totalVar += Number(rowItem.amount || 0);
 
-    const dataObj = {
-        labels: ['Fijos', 'Variables', 'Ahorro', 'Vicios'],
-        datasets: [{
-            data: [fixed, variable, savings, hobbies],
-            backgroundColor: ['#ff5f6d', '#ffb454', '#20c997', '#2b7fff'],
-            borderWidth: 0,
-            hoverOffset: 4
-        }]
-    };
+        if (!tableBody) return;
 
-    if (mainChart) {
-        mainChart.data = dataObj;
-        mainChart.update();
-    } else {
-        mainChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: dataObj,
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom', labels: { color: '#f8fafc', font: {size: 11}, padding: 10 } }
-                }
-            }
-        });
-    }
-}
-
-function drawMonthlyHistoryChart(historyData) {
-    const canvas = document.getElementById('monthly-history-chart');
-    if (!canvas) return;
-
-    const labels = historyData.map((item) => item.label);
-    const datasets = {
-        labels,
-        datasets: [
-            {
-                label: 'Ahorro',
-                data: historyData.map((item) => Number(item.savings.toFixed(2))),
-                borderColor: '#20c997',
-                backgroundColor: 'rgba(32, 201, 151, 0.18)',
-                tension: 0.28,
-                fill: true
-            },
-            {
-                label: 'Hobby',
-                data: historyData.map((item) => Number(item.hobby.toFixed(2))),
-                borderColor: '#2b7fff',
-                backgroundColor: 'rgba(43, 127, 255, 0.16)',
-                tension: 0.28,
-                fill: true
-            },
-            {
-                label: 'Gasto total',
-                data: historyData.map((item) => Number(item.totalExpenses.toFixed(2))),
-                borderColor: '#ffb454',
-                backgroundColor: 'rgba(255, 180, 84, 0.14)',
-                tension: 0.24,
-                fill: false
-            }
-        ]
-    };
-
-    const options = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: {
-                position: 'bottom',
-                labels: { color: '#d9e6f2', boxWidth: 12, font: { size: 11 } }
-            }
-        },
-        scales: {
-            x: {
-                ticks: { color: '#9db0c1' },
-                grid: { color: 'rgba(157, 176, 193, 0.08)' }
-            },
-            y: {
-                ticks: { color: '#9db0c1' },
-                grid: { color: 'rgba(157, 176, 193, 0.08)' }
-            }
-        }
-    };
-
-    if (historyChart) {
-        historyChart.data = datasets;
-        historyChart.update();
-    } else {
-        historyChart = new Chart(canvas, {
-            type: 'line',
-            data: datasets,
-            options
-        });
-    }
-}
-
-function buildDashboardNotifications(summary) {
-    const notifications = [];
-    const priority = summary.priorityCollection;
-    const cheapestCard = summary.cheapestMagicCard;
-    const cheapestGame = summary.cheapestGame;
-    const priceAlerts = loadPriceSnapshotState().alerts || [];
-
-    if (summary.totalItemsNeeded === 0) {
-        notifications.push({
-            icon: '✓',
-            title: 'Colecciones al día',
-            body: 'No te queda nada pendiente en manga y cartas ahora mismo.'
-        });
-    } else if (priority) {
-        notifications.push({
-            icon: '1',
-            title: `${priority.collection.name} va primero`,
-            body: `El siguiente objetivo lógico es el tomo ${priority.nextIndex + 1} por ${formatMoney(priority.collection.pricePerItem)}.`
-        });
-    }
-
-    if (summary.hobbyBudget > 0) {
-        notifications.push({
-            icon: '€',
-            title: `Este mes puedes comprar con margen`,
-            body: `Tienes ${formatMoney(summary.hobbyBudget)} para hobby y ${formatMoney(summary.currentMonthSavings)} de ahorro sugerido.`
-        });
-    }
-
-    if (cheapestGame) {
-        notifications.push({
-            icon: '🎮',
-            title: `${cheapestGame.title} es tu juego más cercano`,
-            body: `Ahora mismo está en ${formatMoney(cheapestGame.currentPrice || 0)} y es el precio activo más bajo de tu shelf.`
-        });
-    }
-
-    if (cheapestCard) {
-        notifications.push({
-            icon: '🃏',
-            title: `${cheapestCard.item.name} es la carta más asequible`,
-            body: `La pendiente más barata de Magic se queda en ${formatMoney(cheapestCard.item.price)}.`
-        });
-    }
-
-    if (runtimeState.pendingSync) {
-        notifications.push({
-            icon: '☁',
-            title: 'Hay cambios pendientes de sincronizar',
-            body: 'La copia local está al día y la nube se actualizará cuando la sesión o la conexión vuelvan.'
-        });
-    }
-
-    priceAlerts.slice(0, 2).forEach((alert) => {
-        notifications.push({
-            icon: '↓',
-            title: `${alert.title} ha bajado de precio`,
-            body: `Antes estaba en ${formatMoney(alert.previous)} y ahora lo tienes en ${formatMoney(alert.next)}.`
-        });
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td><input type="text" value="${escapeHtml(rowItem.name)}" onchange="renameSheetExpense('${rowItem.type}', ${rowItem.id}, this.value)"></td>
+            <td>
+                <select onchange="moveSheetExpense('${rowItem.type}', ${rowItem.id}, this.value)">
+                    <option value="fixed"${rowItem.type === 'fixed' ? ' selected' : ''}>Fijo</option>
+                    <option value="variable"${rowItem.type === 'variable' ? ' selected' : ''}>Variable</option>
+                </select>
+            </td>
+            <td><input type="number" value="${Number(rowItem.amount || 0).toFixed(2)}" min="0" step="0.01" onchange="updateSheetExpenseAmount('${rowItem.type}', ${rowItem.id}, this.value)"></td>
+            <td><button type="button" class="btn btn-sm btn-danger sheet-remove-btn" onclick="removeExpense('${rowItem.type}', ${rowItem.id})">×</button></td>
+        `;
+        tableBody.appendChild(row);
     });
 
-    return notifications.slice(0, 5);
+    const fixedEl = document.getElementById('total-fixed-display');
+    const varEl = document.getElementById('total-variable-display');
+    if (fixedEl) fixedEl.innerText = formatMoney(totalFixed);
+    if (varEl) varEl.innerText = formatMoney(totalVar);
+
+    return { totalFixed, totalVar };
 }
 
-function renderHistoryAndNotifications(summary) {
-    const historyData = getMonthlyHistoryData(6);
-    const summaryEl = document.getElementById('history-summary');
-    const comparisonGrid = document.getElementById('history-comparison-grid');
-    const notificationFeed = document.getElementById('notification-feed');
-    const notificationState = document.getElementById('notification-state');
+window.addSheetExpense = () => {
+    const nameInput = document.getElementById('sheet-new-name');
+    const typeInput = document.getElementById('sheet-new-type');
+    const amountInput = document.getElementById('sheet-new-amount');
+    if (!nameInput || !typeInput || !amountInput) return;
 
-    const current = historyData[historyData.length - 1] || null;
-    const previous = historyData[historyData.length - 2] || null;
+    const name = nameInput.value.trim().slice(0, 80);
+    const type = typeInput.value === 'variable' ? 'variable' : 'fixed';
+    const amount = Number(amountInput.value || 0);
+    if (!name || amount <= 0) return;
 
-    if (summaryEl) {
-        if (!current || !previous) {
-            summaryEl.textContent = 'En cuanto haya al menos dos meses registrados, te comparo la evolución.';
-        } else {
-            const savingDelta = current.savings - previous.savings;
-            const hobbyDelta = current.hobby - previous.hobby;
-            const savingTrend = savingDelta >= 0 ? 'mejor' : 'peor';
-            summaryEl.textContent = `Vas ${savingTrend} que el mes pasado: ahorro ${savingDelta >= 0 ? '+' : ''}${formatMoney(Math.abs(savingDelta))} y hobby ${hobbyDelta >= 0 ? '+' : ''}${formatMoney(Math.abs(hobbyDelta))}.`;
-        }
-    }
+    appData.monthlyData[appData.currentMonth][`${type}Expenses`].push({
+        id: Date.now(),
+        name,
+        amount
+    });
 
-    if (comparisonGrid) {
-        const comparisonCards = [];
-        if (current) {
-            comparisonCards.push({
-                label: 'Ahorro sugerido',
-                value: formatMoney(current.savings),
-                delta: previous ? `${current.savings - previous.savings >= 0 ? '+' : ''}${formatMoney(current.savings - previous.savings)} vs mes anterior` : 'Sin comparativa previa'
-            });
-            comparisonCards.push({
-                label: 'Presupuesto hobby',
-                value: formatMoney(current.hobby),
-                delta: previous ? `${current.hobby - previous.hobby >= 0 ? '+' : ''}${formatMoney(current.hobby - previous.hobby)} vs mes anterior` : 'Sin comparativa previa'
-            });
-            comparisonCards.push({
-                label: 'Gasto total',
-                value: formatMoney(current.totalExpenses),
-                delta: previous ? `${current.totalExpenses - previous.totalExpenses >= 0 ? '+' : ''}${formatMoney(current.totalExpenses - previous.totalExpenses)} vs mes anterior` : 'Sin comparativa previa'
-            });
-        }
+    nameInput.value = '';
+    amountInput.value = '';
+    updateAllUI();
+    saveToDynamo();
+};
 
-        comparisonGrid.innerHTML = comparisonCards.map((item) => `
-            <article class="comparison-card">
-                <span>${escapeHtml(item.label)}</span>
-                <strong>${escapeHtml(item.value)}</strong>
-                <div class="comparison-delta">${escapeHtml(item.delta)}</div>
-            </article>
-        `).join('');
-    }
+window.updateSheetExpenseAmount = (type, id, value) => {
+    const list = appData.monthlyData[appData.currentMonth][`${type}Expenses`];
+    const item = list.find((entry) => entry.id === id);
+    if (!item) return;
+    item.amount = Number(value || 0);
+    updateAllUI();
+    saveToDynamo();
+};
 
-    const notifications = buildDashboardNotifications(summary);
-    if (notificationFeed) {
-        notificationFeed.innerHTML = notifications.map((item) => `
-            <article class="notification-item">
-                <span class="notification-badge">${escapeHtml(item.icon)}</span>
-                <div class="notification-copy">
-                    <strong>${escapeHtml(item.title)}</strong>
-                    <p>${escapeHtml(item.body)}</p>
-                </div>
-            </article>
-        `).join('');
-    }
-    if (notificationState) {
-        notificationState.textContent = notifications.length ? `${notifications.length} señal${notifications.length === 1 ? '' : 'es'} activas` : 'Sin alertas';
-    }
+window.renameSheetExpense = (type, id, value) => {
+    const list = appData.monthlyData[appData.currentMonth][`${type}Expenses`];
+    const item = list.find((entry) => entry.id === id);
+    if (!item) return;
+    item.name = String(value || '').trim().slice(0, 80) || item.name;
+    updateAllUI();
+    saveToDynamo();
+};
 
-    onChartReady(() => drawMonthlyHistoryChart(historyData));
-}
+window.moveSheetExpense = (fromType, id, nextType) => {
+    const fromList = appData.monthlyData[appData.currentMonth][`${fromType}Expenses`];
+    const index = fromList.findIndex((entry) => entry.id === id);
+    if (index === -1) return;
+    const [item] = fromList.splice(index, 1);
+    const targetType = nextType === 'variable' ? 'variable' : 'fixed';
+    appData.monthlyData[appData.currentMonth][`${targetType}Expenses`].push(item);
+    updateAllUI();
+    saveToDynamo();
+};
 
-function renderDashboardModules(summary) {
-    const binderEntries = getBinderEntriesSnapshot();
-    const mangaCollections = appData.collections.filter((collection) => collection.type === 'manga');
-    const totalMangaMissing = mangaCollections.reduce((sum, collection) => (
-        sum + collection.ownedList.filter((owned) => !owned).length
-    ), 0);
-    const binderCount = Object.keys(binderEntries).length;
+// --- RENDERIZADO VISUAL SIMPLE ---
+const formatMoney = (amount) => { return new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR' }).format(amount); };
 
+function renderFinanceSummary(summary) {
     const headline = document.getElementById('dashboard-headline');
     const todaySpend = document.getElementById('today-spend');
     const todaySpendNote = document.getElementById('today-spend-note');
@@ -1488,60 +1045,70 @@ function renderDashboardModules(summary) {
     const todayCollectionNote = document.getElementById('today-collection-note');
     const todayNearest = document.getElementById('today-nearest');
     const todayNearestNote = document.getElementById('today-nearest-note');
+    const historySummary = document.getElementById('history-summary');
+    const financeBalance = document.getElementById('finance-balance-display');
+    const monthSavings = document.getElementById('month-savings-display');
+    const monthlyTableBody = document.getElementById('monthly-summary-table-body');
 
     if (headline) {
         headline.textContent = summary.totalItemsNeeded
-            ? `Ahora mismo te faltan ${summary.totalItemsNeeded} items y tu mejor jugada es reservar ${formatMoney(summary.magicPiggyBank)} para Magic sin perder ritmo en manga y gaming.`
-            : 'Has dejado las colecciones al día. La portada queda lista para seguir comprando con criterio.';
+            ? `Tras gastos te quedan ${formatMoney(summary.disposable)}. La jugada más limpia es separar ${formatMoney(summary.magicPiggyBank)} para Magic y usar el resto con calma.`
+            : `No tienes pendientes en colecciones. Este mes te quedan ${formatMoney(summary.disposable)} libres tras gastos.`;
     }
 
     if (todaySpend) todaySpend.textContent = formatMoney(summary.hobbyBudget);
     if (todaySpendNote) {
         todaySpendNote.textContent = summary.hobbyBudget > 0
-            ? `Puedes usar ${formatMoney(summary.spendingMoney)} con flexibilidad y apartar ${formatMoney(summary.magicPiggyBank)} para Magic.`
-            : 'Este mes no hay margen positivo de hobby con los datos actuales.';
+            ? `Con el reparto actual, ${formatMoney(summary.spendingMoney)} quedarían disponibles para compras.`
+            : 'No queda margen positivo para hobby con los gastos actuales.';
     }
 
     if (todayCollection) {
         todayCollection.textContent = summary.priorityCollection
             ? summary.priorityCollection.collection.name
-            : 'Todo completado';
+            : 'Todo al día';
     }
     if (todayCollectionNote) {
         todayCollectionNote.textContent = summary.priorityCollection
-            ? `Siguiente compra: tomo ${summary.priorityCollection.nextIndex + 1} por ${formatMoney(summary.priorityCollection.collection.pricePerItem)}.`
-            : 'No queda ninguna colección de manga pendiente.';
+            ? `Siguiente tomo: ${summary.priorityCollection.nextIndex + 1} por ${formatMoney(summary.priorityCollection.collection.pricePerItem)}.`
+            : 'No queda ningún tomo pendiente ahora mismo.';
     }
 
-    const nearestTarget = summary.cheapestGame
-        ? `${summary.cheapestGame.title} · ${formatMoney(summary.cheapestGame.currentPrice || 0)}`
-        : summary.cheapestMagicCard
+    if (todayNearest) {
+        todayNearest.textContent = summary.cheapestMagicCard
             ? `${summary.cheapestMagicCard.item.name} · ${formatMoney(summary.cheapestMagicCard.item.price)}`
-            : 'Sin objetivos';
-
-    if (todayNearest) todayNearest.textContent = nearestTarget;
+            : 'Sin compras urgentes';
+    }
     if (todayNearestNote) {
-        todayNearestNote.textContent = summary.cheapestGame
-            ? `Es tu juego más barato ahora mismo en la shelf.`
-            : summary.cheapestMagicCard
-                ? 'Es la siguiente carta pendiente más asequible de Magic.'
-                : 'Añade juegos o deja pendientes nuevas cartas para ver objetivos cercanos.';
+        todayNearestNote.textContent = summary.cheapestMagicCard
+            ? 'Es la carta pendiente más barata del set de Magic.'
+            : 'Cuando vuelvas a tener pendientes, aquí saldrá la compra más cercana.';
     }
 
-    document.getElementById('module-finance-stat').textContent = formatMoney(summary.currentMonthSavings);
-    document.getElementById('module-finance-copy').textContent = `Gasto total ${formatMoney(summary.totalFixed + summary.totalVar)} · hobby ${formatMoney(summary.hobbyBudget)}.`;
-    document.getElementById('module-manga-stat').textContent = `${totalMangaMissing} pendientes`;
-    document.getElementById('module-manga-copy').textContent = totalMangaMissing
-        ? `Vagabond y Slam Dunk siguen con ${totalMangaMissing} tomos por cerrar.`
-        : 'Los mangas están completos ahora mismo.';
-    document.getElementById('module-gaming-stat').textContent = `${appData.gaming.items.length} juego${appData.gaming.items.length === 1 ? '' : 's'}`;
-    document.getElementById('module-gaming-copy').textContent = summary.cheapestGame
-        ? `Más cercano: ${summary.cheapestGame.title} por ${formatMoney(summary.cheapestGame.currentPrice || 0)}.`
-        : 'Tu gaming shelf está lista para crecer cuando quieras.';
-    document.getElementById('module-pokemon-stat').textContent = `${binderCount} cartas`;
-    document.getElementById('module-pokemon-copy').textContent = binderCount
-        ? `Tienes ${binderCount} Pokemon ya asignados en el binder virtual.`
-        : 'El binder está preparado para que empieces a asignar cartas.';
+    if (financeBalance) financeBalance.textContent = formatMoney(summary.disposable);
+    if (monthSavings) monthSavings.textContent = formatMoney(summary.currentMonthSavings);
+
+    const historyData = getMonthlyHistoryData(4);
+    const current = historyData[historyData.length - 1] || null;
+    const previous = historyData[historyData.length - 2] || null;
+    if (historySummary) {
+        if (!current || !previous) {
+            historySummary.textContent = 'En cuanto tengas dos meses, te comparo ahorro y hobby aquí.';
+        } else {
+            const delta = current.savings - previous.savings;
+            historySummary.textContent = `${delta >= 0 ? 'Mejor' : 'Peor'} que el mes anterior en ahorro: ${delta >= 0 ? '+' : ''}${formatMoney(delta)}.`;
+        }
+    }
+
+    if (monthlyTableBody) {
+        monthlyTableBody.innerHTML = historyData.map((month) => `
+            <tr>
+                <td>${escapeHtml(month.label)}</td>
+                <td>${escapeHtml(formatMoney(month.savings))}</td>
+                <td>${escapeHtml(formatMoney(month.hobby))}</td>
+            </tr>
+        `).join('');
+    }
 }
 
 function updateAllUI() {
@@ -1552,64 +1119,24 @@ function updateAllUI() {
     const { year, month } = parseMonthStr(appData.currentMonth);
     document.getElementById('month-selector').value = String(month).padStart(2, '0');
     document.getElementById('year-selector').value = String(year);
-    document.getElementById('salary').value = appData.monthlyData[appData.currentMonth].salary;
-    document.getElementById('allocation').value = appData.monthlyData[appData.currentMonth].allocation;
-    document.getElementById('allocation-display').innerText = `${appData.monthlyData[appData.currentMonth].allocation}%`;
+
+    const salaryInput = document.getElementById('salary');
+    if (salaryInput) salaryInput.value = appData.monthlyData[appData.currentMonth].salary;
+    const allocationInput = document.getElementById('allocation');
+    if (allocationInput) allocationInput.value = appData.monthlyData[appData.currentMonth].allocation;
+    const allocationDisplay = document.getElementById('allocation-display');
+    if (allocationDisplay) allocationDisplay.innerText = `${appData.monthlyData[appData.currentMonth].allocation}%`;
 
     const { totalFixed, totalVar } = renderExpenseLists();
     calculateFinances(totalFixed, totalVar);
     renderCollections();
-    renderGamingCollection();
     renderMtgViewer();
     renderMangaViewer();
     updateSessionUI();
 }
 
-function buildSavingsPanel(monthlyAdd, totalRealSavings) {
-    const financePanel = document.querySelector('.finance-panel');
-    let goalDiv = document.getElementById('savings-goal-panel');
-    if (!goalDiv) {
-        goalDiv = document.createElement('div');
-        goalDiv.id = 'savings-goal-panel';
-        goalDiv.className = 'card';
-        goalDiv.style.gridColumn = "1 / -1"; 
-        goalDiv.style.background = "linear-gradient(to right, #1e293b, #0f172a)";
-        goalDiv.style.border = "1px solid #eab308"; 
-        financePanel.insertBefore(goalDiv, document.querySelector('.strategy-box'));
-    }
-
-    const progressPercent = Math.max(0, Math.min((totalRealSavings / appData.savingsGoal) * 100, 100));
-    
-    goalDiv.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem; flex-wrap:wrap; gap:1rem;">
-            <div style="font-weight:bold; color:#fcd34d; display:flex; align-items:center; gap:0.5rem;">
-                🏆 META 10K <span style="font-size:0.8rem; color:#94a3b8; font-weight:normal">(Ahorro Total)</span>
-            </div>
-            <div style="text-align:right">
-                <span style="font-size:1.2rem; font-weight:bold; color:white">${formatMoney(totalRealSavings)}</span>
-                <span style="color:#64748b"> / €10,000</span>
-            </div>
-        </div>
-        <div style="height:1.5rem; background:#334155; border-radius:999px; overflow:hidden; position:relative;">
-            <div style="height:100%; width:${progressPercent}%; background:linear-gradient(90deg, #eab308, #f59e0b); transition:width 1s;"></div>
-            <div style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:bold; color:white; text-shadow:0 1px 2px black;">${progressPercent.toFixed(1)}%</div>
-        </div>
-        <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.5rem; font-size:0.85rem;">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <span style="color:#94a3b8;" title="Introduce tu ahorro total real">Ahorro Real (Manual):</span>
-                    <div style="display:flex; align-items:center; gap: 0.25rem;">
-                        <input type="number" id="savings-modifier" value="${totalRealSavings.toFixed(2)}" onchange="setExactSavings(this.value)" style="background:#0f172a; border:1px solid #334155; border-radius:4px; padding:0.25rem 0.5rem; color:white; font-weight:bold; width:90px; outline:none;">
-                        <span style="color:#94a3b8">€</span>
-                    </div>
-                </div>
-                <div style="color:#34d399; text-align:right;">
-                    Este mes sobran: <strong>+${formatMoney(monthlyAdd)}</strong><br>
-                    <span style="font-size:0.75rem; color:#94a3b8;">(Súmalo a la izquierda si no lo gastas)</span>
-                </div>
-            </div>
-        </div>
-    `;
+function buildSavingsPanel() {
+    // La versión ligera ya muestra este resumen directamente en la columna lateral.
 }
 
 function calculateFinances(totalFixed = 0, totalVar = 0) {
@@ -1647,10 +1174,6 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     let magicPiggyBank = isMagicComplete ? 0 : hobbyBudget * 0.60;
     let spendingMoney = hobbyBudget - magicPiggyBank;
     const months = hobbyBudget > 0 ? Math.ceil(totalCostNeeded / hobbyBudget) : 999;
-
-    buildSavingsPanel(currentMonthSavings, totalRealSavings);
-
-    onChartReady(() => drawDonutChart(totalFixed, totalVar, currentMonthSavings, hobbyBudget));
 
     let recommendations = [];
     let tempBudget = spendingMoney;
@@ -1696,49 +1219,10 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
     document.getElementById('months-to-finish').innerText = months < 900 ? months : "∞";
     document.getElementById('global-missing-count').innerText = `Faltan ${totalItemsNeeded} items`;
 
-    const stratText = document.querySelector('.strategy-text');
-    let detailsDiv = document.getElementById('plan-details');
-    if (!detailsDiv) {
-        detailsDiv = document.createElement('div');
-        detailsDiv.id = 'plan-details';
-        detailsDiv.style.marginTop = "1rem";
-        detailsDiv.style.paddingTop = "1rem";
-        detailsDiv.style.borderTop = "1px solid rgba(255,255,255,0.1)";
-        stratText.appendChild(detailsDiv);
-    }
-
-    let planHTML = '';
-    if (isMagicComplete && recommendations.length === 0 && totalItemsNeeded === 0) {
-        planHTML = '<div style="color:#34d399; font-weight:bold">¡Todo Completado! Eres el rey del coleccionismo.</div>';
-    } else {
-        planHTML += `<h4 style="font-size:0.75rem; text-transform:uppercase; color:#94a3b8; margin-bottom:0.5rem; letter-spacing:1px">Lista de Compra Prioritaria:</h4>`;
-        if (recommendations.length > 0) {
-            planHTML += `<ul style="list-style:none; font-size:0.9rem; padding:0;">`;
-            recommendations.forEach(rec => {
-                planHTML += `<li style="margin-bottom:0.5rem; display:flex; align-items:center; gap:0.5rem; background:rgba(255,255,255,0.05); padding:0.5rem; border-radius:0.5rem;">
-                    <span style="font-size:1.2rem">${rec.icon}</span>
-                    <div>
-                        <div style="font-weight:bold; color:#fff">${rec.name}</div>
-                        <div style="font-size:0.8rem; color:#94a3b8">Tomos: <strong style="color:#818cf8">${rec.items.join(', ')}</strong></div>
-                    </div>
-                </li>`;
-            });
-            planHTML += `</ul>`;
-            if (tempBudget > 1) planHTML += `<div style="font-size:0.8rem; color:#94a3b8; margin-top:0.5rem;">Sobra: <strong>${formatMoney(tempBudget)}</strong> (A la hucha Magic)</div>`;
-        } else if (spendingMoney > 0) {
-            planHTML += `<div style="font-style:italic; color:#94a3b8; font-size:0.85rem">No alcanza para ningún tomo. ¡Todo a la hucha!</div>`;
-        }
-        if (!isMagicComplete) {
-            planHTML += `<div style="margin-top:0.75rem; font-size:0.85rem; background:rgba(16, 185, 129, 0.1); padding:0.5rem; border-radius:0.5rem; border:1px solid rgba(16, 185, 129, 0.2)">
-                🔮 Para Magic: Guarda <strong style="color:#34d399">${formatMoney(magicPiggyBank)}</strong>
-            </div>`;
-        }
-    }
-    detailsDiv.innerHTML = planHTML;
-
     const summary = {
         totalFixed,
         totalVar,
+        disposable,
         hobbyBudget,
         currentMonthSavings,
         totalItemsNeeded,
@@ -1750,13 +1234,11 @@ function calculateFinances(totalFixed = 0, totalVar = 0) {
         completedCollections,
         recommendations,
         priorityCollection: getPriorityCollections()[0] || null,
-        cheapestMagicCard: getCheapestMissingMagicCard(),
-        cheapestGame: getCheapestGameTarget()
+        cheapestMagicCard: getCheapestMissingMagicCard()
     };
 
     runtimeState.lastFinanceSummary = summary;
-    renderDashboardModules(summary);
-    renderHistoryAndNotifications(summary);
+    renderFinanceSummary(summary);
     return summary;
 }
 
@@ -1949,384 +1431,6 @@ function renderCollections() {
         container.appendChild(card);
     });
 }
-
-function renderGameSearchResults(results = []) {
-    const resultsEl = document.getElementById('game-search-results');
-    if (!resultsEl) return;
-    resultsEl.innerHTML = '';
-
-    if (!results.length) return;
-
-    results.forEach(game => {
-        const card = document.createElement('article');
-        card.className = 'game-result-card';
-        card.innerHTML = `
-            <img class="game-result-thumb" src="${game.cover || ''}" alt="${escapeHtml(game.title || 'Juego')}" loading="lazy" decoding="async">
-            <div class="game-result-main">
-                <div class="game-result-title" title="${escapeHtml(game.title || 'Juego')}">${escapeHtml(game.title || 'Juego')}</div>
-                <div class="game-result-price">Oferta: ${formatMoney(parseFloat(game.currentPrice || 0))} · PVP: ${formatMoney(parseFloat(game.normalPrice || 0))}</div>
-                <div class="game-shelf-meta">${escapeHtml(game.platform || 'N/D')} · ${escapeHtml(game.source || game.provider || 'API')}</div>
-                <button type="button" class="btn btn-sm btn-primary">Añadir</button>
-            </div>
-        `;
-        const addBtn = card.querySelector('button');
-        addBtn.onclick = () => addGameToCollection(game);
-        resultsEl.appendChild(card);
-    });
-}
-
-function renderGamingCollection() {
-    const shelfEl = document.getElementById('gaming-shelf');
-    const countEl = document.getElementById('gaming-count');
-    if (!shelfEl || !countEl) return;
-
-    const items = appData.gaming.items || [];
-    countEl.textContent = `${items.length} juego${items.length === 1 ? '' : 's'}`;
-    shelfEl.innerHTML = '';
-
-    if (!items.length) {
-        shelfEl.innerHTML = '<div class="gaming-empty">Tu shelf está vacía. Busca un juego arriba y añádelo.</div>';
-        return;
-    }
-
-    items.forEach(item => {
-        const gameCard = document.createElement('article');
-        gameCard.className = 'game-shelf-card';
-        gameCard.innerHTML = `
-            <img class="game-shelf-cover" src="${item.cover || ''}" alt="${escapeHtml(item.title)}" loading="lazy" decoding="async">
-            <div class="game-shelf-info">
-                <div class="game-shelf-title" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</div>
-                <div class="game-shelf-price">Actual: ${formatMoney(item.currentPrice || 0)}</div>
-                <div class="game-shelf-price">Histórico: ${formatMoney(item.cheapestEver || 0)}</div>
-                <div class="game-shelf-meta">${escapeHtml(item.platform || 'Plataforma N/D')} · ${escapeHtml(item.region || 'Global')}</div>
-                <div class="game-shelf-meta">${escapeHtml(item.source || 'Manual')}</div>
-                <button type="button" class="btn btn-sm" onclick="removeGameFromCollection('${item.id}')">Quitar</button>
-            </div>
-        `;
-        shelfEl.appendChild(gameCard);
-    });
-}
-
-function normalizeGameTitle(value) {
-    return String(value || '')
-        .normalize('NFKD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[’'`]/g, '')
-        .replace(/[^a-z0-9\u3040-\u30ff\u4e00-\u9faf\s-]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim();
-}
-
-function buildGameSearchQueries(input) {
-    const cleaned = input.trim();
-    const normalized = normalizeGameTitle(cleaned);
-    const queries = new Set([cleaned, normalized].filter(Boolean));
-
-    if (/\bff\b/i.test(normalized)) queries.add(normalized.replace(/\bff\b/ig, 'final fantasy'));
-    if (/final fantasy/i.test(normalized)) queries.add(normalized.replace(/final fantasy/ig, 'ff'));
-    if (/premium/i.test(normalized)) queries.add(normalized.replace(/premium/ig, 'package'));
-    if (/\bi+\s*ii\b/i.test(normalized)) queries.add(normalized.replace(/\bi+\s*ii\b/i, '1 2'));
-
-    const builtInAlias = BUILTIN_GAME_ALIASES[normalized];
-    if (builtInAlias) builtInAlias.forEach(alias => queries.add(alias));
-
-    const customAlias = appData.gaming.aliases[normalized];
-    if (customAlias) queries.add(customAlias);
-
-    return [...queries].filter(Boolean).slice(0, 6);
-}
-
-function unifyGameResult(item) {
-    const title = item.title || item.external || 'Juego';
-    return {
-        id: `${item.provider}:${item.providerId}`,
-        provider: item.provider,
-        providerId: item.providerId,
-        title,
-        cover: item.cover || '',
-        currentPrice: Number(item.currentPrice || 0),
-        normalPrice: Number(item.normalPrice || 0),
-        cheapestEver: Number(item.cheapestEver || item.currentPrice || 0),
-        platform: item.platform || 'N/D',
-        region: item.region || 'Global',
-        source: item.provider,
-        raw: item.raw || null
-    };
-}
-
-function dedupeGameResults(results) {
-    const byId = new Map();
-    const byTitle = new Map();
-
-    results.forEach(raw => {
-        const item = unifyGameResult(raw);
-        if (!byId.has(item.id)) byId.set(item.id, item);
-    });
-
-    byId.forEach(item => {
-        const key = normalizeGameTitle(item.title);
-        if (!byTitle.has(key)) {
-            byTitle.set(key, item);
-        } else {
-            const existing = byTitle.get(key);
-            const existingScore = (existing.cover ? 1 : 0) + (existing.currentPrice > 0 ? 1 : 0);
-            const candidateScore = (item.cover ? 1 : 0) + (item.currentPrice > 0 ? 1 : 0);
-            if (candidateScore > existingScore) byTitle.set(key, item);
-        }
-    });
-
-    return [...byTitle.values()];
-}
-
-function rankGameResults(results, rawQuery) {
-    const q = normalizeGameTitle(rawQuery);
-    return results.sort((a, b) => {
-        const aTitle = normalizeGameTitle(a.title);
-        const bTitle = normalizeGameTitle(b.title);
-        const aStarts = aTitle.startsWith(q) ? 3 : aTitle.includes(q) ? 2 : 0;
-        const bStarts = bTitle.startsWith(q) ? 3 : bTitle.includes(q) ? 2 : 0;
-        if (aStarts !== bStarts) return bStarts - aStarts;
-
-        const providerBonus = { Steam: 2, CheapShark: 1 };
-        const pa = providerBonus[a.provider] || 0;
-        const pb = providerBonus[b.provider] || 0;
-        if (pa !== pb) return pb - pa;
-
-        return b.currentPrice - a.currentPrice;
-    });
-}
-
-async function searchCheapSharkProvider(queries) {
-    const responses = await Promise.all(
-        queries.map(async (q) => {
-            const res = await fetch(`https://www.cheapshark.com/api/1.0/games?title=${encodeURIComponent(q)}&limit=20`);
-            if (!res.ok) return [];
-            return await res.json();
-        })
-    );
-
-    return responses.flat().map(game => ({
-        provider: 'CheapShark',
-        providerId: game.gameID,
-        title: game.external,
-        cover: game.thumb,
-        currentPrice: parseFloat(game.salePrice || 0),
-        normalPrice: parseFloat(game.normalPrice || 0),
-        cheapestEver: parseFloat(game.salePrice || 0),
-        platform: 'Multi',
-        region: 'Global',
-        raw: game
-    }));
-}
-
-async function searchSteamProvider(queries) {
-    const responses = await Promise.all(
-        queries.map(async (q) => {
-            const url = `https://store.steampowered.com/api/storesearch?term=${encodeURIComponent(q)}&l=english&cc=es`;
-            const res = await fetch(url);
-            if (!res.ok) return [];
-            const data = await res.json();
-            return Array.isArray(data?.items) ? data.items : [];
-        })
-    );
-
-    return responses.flat().map(game => {
-        const finalPrice = game.price?.final ? game.price.final / 100 : 0;
-        const initialPrice = game.price?.initial ? game.price.initial / 100 : finalPrice;
-        return {
-            provider: 'Steam',
-            providerId: String(game.id),
-            title: game.name,
-            cover: game.tiny_image || '',
-            currentPrice: Number(finalPrice || 0),
-            normalPrice: Number(initialPrice || finalPrice || 0),
-            cheapestEver: Number(finalPrice || 0),
-            platform: 'PC / Steam',
-            region: 'Global',
-            raw: game
-        };
-    });
-}
-
-window.searchGames = async () => {
-    const input = document.getElementById('game-search-input');
-    const status = document.getElementById('game-search-status');
-    if (!input || !status) return;
-    const query = input.value.trim();
-    if (!query) {
-        status.textContent = 'Escribe el nombre de un juego para buscar.';
-        renderGameSearchResults([]);
-        return;
-    }
-
-    status.textContent = 'Buscando en múltiples fuentes...';
-    try {
-        const queryVariants = buildGameSearchQueries(query);
-        const providerRuns = await Promise.allSettled([
-            searchCheapSharkProvider(queryVariants),
-            searchSteamProvider(queryVariants)
-        ]);
-
-        const providerResults = providerRuns
-            .filter(run => run.status === 'fulfilled')
-            .flatMap(run => run.value);
-
-        const deduped = dedupeGameResults(providerResults);
-        const ranked = rankGameResults(deduped, query).slice(0, 30);
-        renderGameSearchResults(ranked);
-        status.textContent = ranked.length
-            ? `${ranked.length} resultado(s). Si no aparece la edición JP/premium, usa "Añadir manual".`
-            : 'Sin resultados exactos en APIs públicas. Usa "Añadir manual" para ediciones japonesas/premium.';
-    } catch (err) {
-        console.error('Error buscando juegos:', err);
-        status.textContent = 'No se pudo consultar las APIs de juegos.';
-        renderGameSearchResults([]);
-    }
-};
-
-async function fetchGameDetails(gameId) {
-    try {
-        const res = await fetch(`https://www.cheapshark.com/api/1.0/games?id=${encodeURIComponent(gameId)}`);
-        if (!res.ok) return null;
-        return await res.json();
-    } catch {
-        return null;
-    }
-}
-
-window.addGameToCollection = async (game) => {
-    const status = document.getElementById('game-search-status');
-    const sourceId = game.id || `${game.provider}:${game.providerId || game.gameID}`;
-    const normIncoming = normalizeGameTitle(game.title || game.external || '');
-    if (appData.gaming.items.some(item => item.id === sourceId || normalizeGameTitle(item.title) === normIncoming)) {
-        if (status) status.textContent = 'Ese juego ya está en tu colección.';
-        return;
-    }
-
-    if (status) status.textContent = 'Añadiendo juego y cargando metadatos...';
-    let normalized = null;
-    if (game.provider === 'CheapShark') {
-        const details = await fetchGameDetails(game.providerId || game.gameID);
-        normalized = {
-            id: sourceId,
-            title: details?.info?.title || game.title || game.external || 'Juego',
-            cover: details?.info?.thumb || game.cover || game.thumb || '',
-            currentPrice: parseFloat(game.currentPrice || game.salePrice || details?.deals?.[0]?.price || 0),
-            normalPrice: parseFloat(game.normalPrice || details?.deals?.[0]?.retailPrice || 0),
-            cheapestEver: parseFloat(details?.cheapestPriceEver?.price || game.currentPrice || 0),
-            steamAppID: details?.info?.steamAppID || game.steamAppID || null,
-            platform: game.platform || (details?.info?.steamAppID ? 'PC / Steam' : 'Digital'),
-            region: game.region || 'Global',
-            source: 'CheapShark'
-        };
-    } else {
-        normalized = {
-            id: sourceId,
-            title: game.title || game.name || 'Juego',
-            cover: game.cover || game.tiny_image || '',
-            currentPrice: parseFloat(game.currentPrice || 0),
-            normalPrice: parseFloat(game.normalPrice || game.currentPrice || 0),
-            cheapestEver: parseFloat(game.cheapestEver || game.currentPrice || 0),
-            steamAppID: game.providerId || game.id || null,
-            platform: game.platform || 'PC / Steam',
-            region: game.region || 'Global',
-            source: game.provider || 'Steam'
-        };
-    }
-
-    appData.gaming.items.unshift(normalized);
-    trackPriceSnapshot('gaming', normalized.id, Number(normalized.currentPrice || 0), normalized.title);
-    renderGamingCollection();
-    saveToDynamo();
-    if (status) status.textContent = `"${normalized.title}" añadido a tu colección.`;
-};
-
-window.removeGameFromCollection = (id) => {
-    appData.gaming.items = appData.gaming.items.filter(item => item.id !== id);
-    renderGamingCollection();
-    saveToDynamo();
-};
-
-window.refreshGamingPrices = async () => {
-    const status = document.getElementById('game-search-status');
-    if (!appData.gaming.items.length) {
-        if (status) status.textContent = 'Tu colección gaming está vacía.';
-        return;
-    }
-
-    if (status) status.textContent = 'Actualizando precios de la colección...';
-    let updated = 0;
-
-    for (const item of appData.gaming.items) {
-        const queries = buildGameSearchQueries(item.title).slice(0, 2);
-        try {
-            const cheap = await searchCheapSharkProvider(queries);
-            const ranked = rankGameResults(dedupeGameResults(cheap), item.title);
-            if (ranked.length) {
-                const top = ranked[0];
-                item.currentPrice = top.currentPrice || item.currentPrice;
-                item.normalPrice = top.normalPrice || item.normalPrice;
-                item.cheapestEver = Math.min(item.cheapestEver || Infinity, top.currentPrice || item.currentPrice);
-                trackPriceSnapshot('gaming', item.id, Number(item.currentPrice || 0), item.title);
-                updated++;
-            }
-        } catch {
-            // Silent per-item failure; keep previous price.
-        }
-    }
-
-    renderGamingCollection();
-    saveToDynamo();
-    if (status) status.textContent = `Precios actualizados: ${updated}/${appData.gaming.items.length}.`;
-};
-
-window.toggleManualGamePanel = () => {
-    const panel = document.getElementById('manual-game-panel');
-    if (!panel) return;
-    panel.classList.toggle('hidden');
-};
-
-window.addManualGame = () => {
-    const title = document.getElementById('manual-game-title')?.value.trim();
-    const platform = document.getElementById('manual-game-platform')?.value.trim() || 'N/D';
-    const region = document.getElementById('manual-game-region')?.value.trim() || 'JP';
-    const cover = document.getElementById('manual-game-cover')?.value.trim() || '';
-    const alias = document.getElementById('manual-game-alias')?.value.trim();
-    const priceRaw = document.getElementById('manual-game-price')?.value;
-    const status = document.getElementById('game-search-status');
-    if (!title) {
-        if (status) status.textContent = 'Para añadir manual, el título es obligatorio.';
-        return;
-    }
-
-    const item = {
-        id: `manual-${Date.now()}`,
-        title,
-        cover,
-        currentPrice: parseFloat(priceRaw || 0),
-        normalPrice: parseFloat(priceRaw || 0),
-        cheapestEver: parseFloat(priceRaw || 0),
-        steamAppID: null,
-        platform,
-        region,
-        source: 'Manual'
-    };
-
-    appData.gaming.items.unshift(item);
-    trackPriceSnapshot('gaming', item.id, Number(item.currentPrice || 0), item.title);
-    if (alias) {
-        appData.gaming.aliases[normalizeGameTitle(alias)] = normalizeGameTitle(title);
-    }
-    renderGamingCollection();
-    saveToDynamo();
-    if (status) status.textContent = `"${title}" añadido manualmente.`;
-
-    ['manual-game-title', 'manual-game-platform', 'manual-game-region', 'manual-game-cover', 'manual-game-price', 'manual-game-alias'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-    });
-};
 
 window.toggleExpand = (id) => {
     const col = appData.collections.find(c => c.id === id);
