@@ -8,7 +8,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260320a">
+    <link rel="stylesheet" href="shell.css?v=20260320b">
+    <link rel="stylesheet" href="style.css?v=20260320b">
 
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#0d2b45">
@@ -59,32 +60,74 @@
         }
     </script>
 </head>
-<body>
+<body class="shell-page">
     <div class="bg-orb bg-orb-a" aria-hidden="true"></div>
     <div class="bg-orb bg-orb-b" aria-hidden="true"></div>
 
-    <header class="topbar">
-        <div class="container header-content">
-            <div class="logo">
-                <span class="icon" aria-hidden="true">📚</span>
+    <div class="shell-layout">
+        <aside id="shell-sidebar" class="shell-sidebar" aria-label="navegación principal">
+            <div class="shell-sidebar-brand">
+                <div class="shell-brand-mark">🗂️</div>
                 <div>
-                    <h1>Gestor de Colecciones</h1>
-                    <p class="subtitle">Finanzas claras para comprar mejor</p>
+                    <strong>Life Savings</strong>
+                    <span>Panel personal</span>
                 </div>
             </div>
-            <div class="badges" aria-label="estado general">
-                <span class="badge success" id="header-goal-progress">Objetivo: 0/5</span>
-                <span class="badge warning" id="global-missing-count" aria-live="polite">Calculando...</span>
-                <span class="badge info" id="header-magic-remaining">Magic: €0.00</span>
-                <span class="badge neutral" id="header-month-budget">Hobby mes: €0.00</span>
-                <span class="badge neutral" id="session-sync-badge">Sincronización local</span>
-                <div id="header-action-slot" class="header-action-slot" aria-label="acciones rápidas"></div>
-                <button type="button" onclick="logout()" class="btn btn-danger btn-sm">Salir</button>
-            </div>
-        </div>
-    </header>
 
-    <main class="container app-shell">
+            <nav class="shell-nav">
+                <a href="index.html?v=20260320b" class="shell-nav-link active">
+                    <span>📊</span>
+                    <div>
+                        <strong>Finanzas</strong>
+                        <small>Tu hoja mensual</small>
+                    </div>
+                </a>
+                <a href="index.html?v=20260320b#collections-section" class="shell-nav-link">
+                    <span>📚</span>
+                    <div>
+                        <strong>Colecciones</strong>
+                        <small>Magic y Vagabond</small>
+                    </div>
+                </a>
+                <a href="videoclub.html?v=20260320b" class="shell-nav-link">
+                    <span>🎬</span>
+                    <div>
+                        <strong>Videoclub</strong>
+                        <small>Tu diario de pelis</small>
+                    </div>
+                </a>
+            </nav>
+
+            <div class="shell-sidebar-footer">
+                <button type="button" class="btn btn-danger btn-sm" onclick="logout()">Salir</button>
+            </div>
+        </aside>
+
+        <button type="button" class="shell-overlay" aria-label="Cerrar menú" onclick="closeShellNav()"></button>
+
+        <div class="shell-main">
+            <header class="topbar">
+                <div class="container header-content">
+                    <div class="logo">
+                        <button type="button" class="shell-nav-toggle" onclick="toggleShellNav()" aria-label="Abrir menú">☰</button>
+                        <span class="icon" aria-hidden="true">📚</span>
+                        <div>
+                            <h1>Gestor de Colecciones</h1>
+                            <p class="subtitle">Finanzas claras para comprar mejor</p>
+                        </div>
+                    </div>
+                    <div class="badges" aria-label="estado general">
+                        <span class="badge success" id="header-goal-progress">Objetivo: 0/5</span>
+                        <span class="badge warning" id="global-missing-count" aria-live="polite">Calculando...</span>
+                        <span class="badge info" id="header-magic-remaining">Magic: €0.00</span>
+                        <span class="badge neutral" id="header-month-budget">Hobby mes: €0.00</span>
+                        <span class="badge neutral" id="session-sync-badge">Sincronización local</span>
+                        <div id="header-action-slot" class="header-action-slot" aria-label="acciones rápidas"></div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="container app-shell">
         <section id="session-banner" class="session-banner hidden" aria-live="polite"></section>
 
         <section class="card finance-hero" aria-label="resumen financiero">
@@ -265,20 +308,23 @@
             <h2 class="section-title">Colecciones</h2>
             <div id="collections-container" class="collections-grid"></div>
         </section>
-    </main>
+            </main>
+        </div>
+    </div>
 
     <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
+    <script src="shell.js?v=20260320b"></script>
 
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('sw.js?v=20260320a')
+                navigator.serviceWorker.register('sw.js?v=20260320b')
                     .then(reg => console.log('Service Worker registrado', reg))
                     .catch(err => console.log('Fallo al registrar Service Worker', err));
             });
         }
     </script>
 
-    <script src="script.js?v=20260320a"></script>
+    <script src="script.js?v=20260320b"></script>
 </body>
 </html>

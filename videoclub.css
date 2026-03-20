@@ -1,0 +1,564 @@
+:root {
+    --vc-bg: #0b1020;
+    --vc-panel: rgba(18, 24, 46, 0.94);
+    --vc-panel-soft: rgba(255, 255, 255, 0.04);
+    --vc-line: rgba(151, 169, 202, 0.14);
+    --vc-text: #edf2ff;
+    --vc-muted: #aab5d3;
+    --vc-gold: #f7c66d;
+    --vc-red: #f05b5b;
+    --vc-blue: #67b3ff;
+    --vc-green: #4cd39b;
+    --vc-shadow: 0 18px 50px rgba(0, 0, 0, 0.34);
+    --text-main: var(--vc-text);
+    --text-muted: var(--vc-muted);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body.videoclub-page {
+    background:
+        radial-gradient(circle at top left, rgba(240, 91, 91, 0.14), transparent 28%),
+        radial-gradient(circle at bottom right, rgba(103, 179, 255, 0.14), transparent 24%),
+        linear-gradient(160deg, #0b1020, #12182e 48%, #0d1326);
+    color: var(--vc-text);
+    font-family: "IBM Plex Sans", system-ui, sans-serif;
+    min-height: 100vh;
+}
+
+.btn {
+    border: 1px solid rgba(151, 169, 202, 0.18);
+    border-radius: 0.9rem;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--vc-text);
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    padding: 0.72rem 1rem;
+    transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(255, 255, 255, 0.08);
+}
+
+.btn-sm {
+    padding: 0.56rem 0.85rem;
+    font-size: 0.86rem;
+}
+
+.btn-primary {
+    border-color: rgba(240, 91, 91, 0.28);
+    background: linear-gradient(145deg, rgba(240, 91, 91, 0.92), rgba(214, 71, 71, 0.92));
+    color: #fff9fb;
+}
+
+.btn-primary:hover {
+    border-color: rgba(255, 182, 182, 0.4);
+    background: linear-gradient(145deg, rgba(243, 106, 106, 0.98), rgba(222, 78, 78, 0.98));
+}
+
+.btn-danger {
+    border-color: rgba(240, 91, 91, 0.3);
+    background: rgba(240, 91, 91, 0.12);
+    color: #ffb2b2;
+}
+
+.bg-reel {
+    position: fixed;
+    border-radius: 999px;
+    filter: blur(90px);
+    opacity: 0.34;
+    pointer-events: none;
+    z-index: -1;
+}
+
+.bg-reel-a {
+    width: 18rem;
+    height: 18rem;
+    top: -4rem;
+    left: -3rem;
+    background: rgba(240, 91, 91, 0.82);
+}
+
+.bg-reel-b {
+    width: 14rem;
+    height: 14rem;
+    right: -2rem;
+    bottom: 2rem;
+    background: rgba(103, 179, 255, 0.76);
+}
+
+.videoclub-container {
+    width: min(1220px, calc(100% - 2rem));
+    margin: 0 auto;
+}
+
+.videoclub-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    padding: 1rem 0;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    background: rgba(10, 15, 30, 0.72);
+}
+
+.videoclub-topbar-inner,
+.videoclub-brand,
+.videoclub-top-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+}
+
+.videoclub-topbar-inner {
+    justify-content: space-between;
+}
+
+.videoclub-brand-mark {
+    width: 2.9rem;
+    height: 2.9rem;
+    border-radius: 0.9rem;
+    display: grid;
+    place-items: center;
+    font-size: 1.3rem;
+    background: linear-gradient(145deg, rgba(240, 91, 91, 0.18), rgba(103, 179, 255, 0.18));
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.videoclub-brand h1,
+.videoclub-hero-copy h2,
+.videoclub-library-header h3,
+.videoclub-modal-header h3 {
+    font-family: "Sora", sans-serif;
+}
+
+.videoclub-brand p,
+.videoclub-muted {
+    color: var(--vc-muted);
+}
+
+.videoclub-main {
+    display: grid;
+    gap: 1rem;
+    padding: 1.2rem 0 2.2rem;
+}
+
+.videoclub-session-banner,
+.videoclub-hero-card,
+.videoclub-search-card,
+.videoclub-library-card,
+.videoclub-modal-card {
+    border: 1px solid var(--vc-line);
+    border-radius: 1.2rem;
+    background:
+        linear-gradient(165deg, rgba(24, 30, 56, 0.96), rgba(15, 20, 39, 0.98));
+    box-shadow: var(--vc-shadow);
+}
+
+.videoclub-session-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.9rem 1rem;
+}
+
+.videoclub-session-banner.hidden {
+    display: none;
+}
+
+.videoclub-session-copy {
+    display: grid;
+    gap: 0.16rem;
+}
+
+.videoclub-session-copy strong {
+    font-size: 0.94rem;
+}
+
+.videoclub-session-copy span {
+    color: var(--vc-muted);
+    font-size: 0.84rem;
+}
+
+.videoclub-hero-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.9fr);
+    gap: 1rem;
+    padding: 1.15rem;
+}
+
+.videoclub-kicker {
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--vc-gold);
+    margin-bottom: 0.3rem;
+    font-weight: 700;
+}
+
+.videoclub-hero-copy {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.videoclub-hero-copy h2 {
+    font-size: clamp(1.5rem, 3vw, 2.35rem);
+    max-width: 18ch;
+}
+
+.videoclub-hero-stats {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.videoclub-stat {
+    padding: 0.9rem;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.videoclub-stat span {
+    display: block;
+    color: var(--vc-muted);
+    font-size: 0.8rem;
+    margin-bottom: 0.3rem;
+}
+
+.videoclub-stat strong {
+    font-family: "Sora", sans-serif;
+    font-size: 1.35rem;
+}
+
+.videoclub-search-card,
+.videoclub-library-card {
+    padding: 1rem;
+    display: grid;
+    gap: 0.8rem;
+}
+
+.videoclub-search-row,
+.videoclub-filter-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.videoclub-input,
+.videoclub-textarea {
+    width: 100%;
+    border: 1px solid rgba(151, 169, 202, 0.18);
+    border-radius: 0.8rem;
+    background: rgba(8, 12, 24, 0.55);
+    color: var(--vc-text);
+    padding: 0.72rem 0.85rem;
+    font: inherit;
+    outline: none;
+}
+
+.videoclub-input {
+    min-width: 180px;
+}
+
+.videoclub-textarea {
+    min-height: 130px;
+    resize: vertical;
+}
+
+.manual-movie-panel {
+    display: grid;
+    gap: 0.7rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid rgba(151, 169, 202, 0.12);
+}
+
+.manual-movie-panel.hidden {
+    display: none;
+}
+
+.manual-movie-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.6rem;
+}
+
+.movie-search-results,
+.videoclub-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 0.85rem;
+}
+
+.movie-result-card,
+.videoclub-card {
+    border-radius: 1rem;
+    overflow: hidden;
+    border: 1px solid rgba(151, 169, 202, 0.14);
+    background: rgba(255, 255, 255, 0.03);
+    transition: transform 0.18s ease, border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.videoclub-card {
+    cursor: pointer;
+}
+
+.movie-result-card:hover,
+.videoclub-card:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.2);
+    background: rgba(255, 255, 255, 0.045);
+}
+
+.movie-result-poster,
+.videoclub-card-poster {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    display: block;
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.movie-result-poster-fallback,
+.videoclub-card-poster-fallback {
+    display: grid;
+    place-items: center;
+    font-size: 2rem;
+    font-weight: 800;
+    color: rgba(255, 255, 255, 0.92);
+    background:
+        radial-gradient(circle at top left, rgba(240, 91, 91, 0.24), transparent 30%),
+        linear-gradient(160deg, rgba(26, 33, 60, 0.98), rgba(11, 15, 28, 0.98));
+}
+
+.movie-result-body,
+.videoclub-card-body {
+    padding: 0.8rem;
+    display: grid;
+    gap: 0.28rem;
+}
+
+.movie-result-title,
+.videoclub-card-title {
+    font-weight: 700;
+    font-size: 0.92rem;
+}
+
+.movie-result-meta,
+.videoclub-card-meta {
+    font-size: 0.78rem;
+    color: var(--vc-muted);
+}
+
+.movie-result-actions {
+    display: flex;
+    gap: 0.45rem;
+    margin-top: 0.45rem;
+}
+
+.movie-result-actions .btn {
+    flex: 1;
+}
+
+.videoclub-library-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.videoclub-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.28rem 0.56rem;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.videoclub-status-badge.is-watchlist {
+    background: rgba(103, 179, 255, 0.12);
+    color: #b6d9ff;
+}
+
+.videoclub-status-badge.is-pending {
+    background: rgba(247, 198, 109, 0.14);
+    color: #ffe1a3;
+}
+
+.videoclub-status-badge.is-watching {
+    background: rgba(76, 211, 155, 0.14);
+    color: #b4f3da;
+}
+
+.videoclub-status-badge.is-watched,
+.videoclub-status-badge.is-rewatch {
+    background: rgba(240, 91, 91, 0.14);
+    color: #ffb8b8;
+}
+
+.videoclub-card-actions {
+    margin-top: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.videoclub-rating {
+    color: var(--vc-gold);
+    font-size: 0.82rem;
+    font-weight: 700;
+}
+
+.videoclub-empty {
+    padding: 1rem;
+    color: var(--vc-muted);
+    border: 1px dashed rgba(151, 169, 202, 0.16);
+    border-radius: 1rem;
+}
+
+.videoclub-modal {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(6, 9, 18, 0.82);
+    z-index: 200;
+}
+
+.videoclub-modal.hidden {
+    display: none;
+}
+
+.videoclub-modal-card {
+    width: min(980px, 100%);
+    padding: 1rem;
+    position: relative;
+    max-height: min(92vh, 860px);
+    overflow: auto;
+}
+
+.videoclub-close-btn {
+    position: absolute;
+    top: 0.8rem;
+    right: 0.8rem;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    background: rgba(0, 0, 0, 0.22);
+    color: var(--vc-text);
+    cursor: pointer;
+}
+
+.videoclub-modal-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 1rem;
+}
+
+.videoclub-modal-poster {
+    border-radius: 1rem;
+    overflow: hidden;
+    border: 1px solid rgba(151, 169, 202, 0.14);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.videoclub-modal-poster img {
+    width: 100%;
+    aspect-ratio: 2 / 3;
+    object-fit: cover;
+    display: block;
+}
+
+.videoclub-modal-copy {
+    display: grid;
+    gap: 0.95rem;
+}
+
+.videoclub-edit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.videoclub-edit-grid label,
+.videoclub-note-field {
+    display: grid;
+    gap: 0.4rem;
+    font-size: 0.82rem;
+    color: var(--vc-muted);
+}
+
+.videoclub-favorite-toggle {
+    align-content: end;
+}
+
+.videoclub-favorite-toggle input {
+    margin-right: 0.45rem;
+}
+
+.videoclub-modal-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.7rem;
+    flex-wrap: wrap;
+}
+
+.videoclub-toast {
+    position: fixed;
+    right: 1rem;
+    bottom: 1rem;
+    z-index: 240;
+    padding: 0.85rem 1rem;
+    border-radius: 0.95rem;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: rgba(10, 15, 30, 0.92);
+    color: var(--vc-text);
+    box-shadow: var(--vc-shadow);
+    opacity: 0;
+    transform: translateY(8px);
+    pointer-events: none;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.videoclub-toast.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+@media (max-width: 980px) {
+    .videoclub-hero-card,
+    .videoclub-modal-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .movie-search-results,
+    .videoclub-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .videoclub-edit-grid,
+    .manual-movie-grid {
+        grid-template-columns: 1fr;
+    }
+}

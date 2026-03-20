@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Videoclub Personal</title>
+    <meta name="description" content="Registra películas vistas, pendientes y favoritas en tu videoclub personal.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="shell.css?v=20260320b">
+    <link rel="stylesheet" href="videoclub.css?v=20260320b">
+    <link rel="manifest" href="manifest.json">
+
+    <script>
+        const hash = window.location.hash;
+        let idToken = localStorage.getItem('cognito_id_token');
+
+        if (hash.includes("id_token=")) {
+            const urlParams = new URLSearchParams(hash.replace('#', '?'));
+            idToken = urlParams.get('id_token');
+            localStorage.setItem('cognito_id_token', idToken);
+            window.history.replaceState({}, document.title, window.location.pathname);
+        }
+
+        function decodeTokenExpiry(token) {
+            try {
+                const payload = token.split('.')[1]
+                    .replace(/-/g, '+')
+                    .replace(/_/g, '/');
+                const decoded = JSON.parse(atob(payload));
+                return Number(decoded.exp || 0);
+            } catch {
+                return 0;
+            }
+        }
+
+        window.appSession = {
+            loginUrl: 'https://networknormon.github.io/life_savings/login.html',
+            hasToken: Boolean(idToken),
+            expiresAt: decodeTokenExpiry(idToken),
+            isExpired: false
+        };
+        window.appSession.isExpired = window.appSession.expiresAt
+            ? Math.floor(Date.now() / 1000) >= window.appSession.expiresAt
+            : false;
+
+        function logout() {
+            localStorage.removeItem('cognito_id_token');
+            window.location.href = window.appSession.loginUrl;
+        }
+
+        function reconnectSession() {
+            window.location.href = window.appSession.loginUrl;
+        }
+    </script>
+</head>
+<body class="shell-page videoclub-page">
+    <div class="bg-reel bg-reel-a" aria-hidden="true"></div>
+    <div class="bg-reel bg-reel-b" aria-hidden="true"></div>
+
+    <div class="shell-layout">
+        <aside id="shell-sidebar" class="shell-sidebar" aria-label="navegación principal">
+            <div class="shell-sidebar-brand">
+                <div class="shell-brand-mark">🗂️</div>
+                <div>
+                    <strong>Life Savings</strong>
+                    <span>Panel personal</span>
+                </div>
+            </div>
+
+            <nav class="shell-nav">
+                <a href="index.html?v=20260320b" class="shell-nav-link">
+                    <span>📊</span>
+                    <div>
+                        <strong>Finanzas</strong>
+                        <small>Tu hoja mensual</small>
+                    </div>
+                </a>
+                <a href="index.html?v=20260320b#collections-section" class="shell-nav-link">
+                    <span>📚</span>
+                    <div>
+                        <strong>Colecciones</strong>
+                        <small>Magic y Vagabond</small>
+                    </div>
+                </a>
+                <a href="videoclub.html?v=20260320b" class="shell-nav-link active">
+                    <span>🎬</span>
+                    <div>
+                        <strong>Videoclub</strong>
+                        <small>Diario tipo Letterboxd</small>
+                    </div>
+                </a>
+            </nav>
+
+            <div class="shell-sidebar-footer">
+                <button type="button" class="btn btn-danger btn-sm" onclick="logout()">Salir</button>
+            </div>
+        </aside>
+
+        <button type="button" class="shell-overlay" aria-label="Cerrar menú" onclick="closeShellNav()"></button>
+
+        <div class="shell-main">
+            <header class="videoclub-topbar">
+                <div class="videoclub-container videoclub-topbar-inner">
+                    <div class="videoclub-brand">
+                        <button type="button" class="shell-nav-toggle" onclick="toggleShellNav()" aria-label="Abrir menú">☰</button>
+                        <div class="videoclub-brand-mark">🎞️</div>
+                        <div>
+                            <h1>Videoclub Personal</h1>
+                            <p>Vistas, pendientes, favoritas y notas en un solo sitio.</p>
+                        </div>
+                    </div>
+                    <div class="videoclub-top-actions">
+                        <button type="button" class="btn btn-sm" onclick="exportVideoclubJson()">Exportar JSON</button>
+                        <button type="button" class="btn btn-sm" onclick="triggerVideoclubImport()">Importar JSON</button>
+                        <button type="button" class="btn btn-sm" onclick="reconnectSession()">Reconectar</button>
+                        <input type="file" id="videoclub-import-input" accept="application/json" hidden>
+                    </div>
+                </div>
+            </header>
+
+            <main class="videoclub-container videoclub-main">
+                <section id="videoclub-session-banner" class="videoclub-session-banner hidden" aria-live="polite"></section>
+
+                <section class="videoclub-hero-card">
+                    <div class="videoclub-hero-copy">
+                        <p class="videoclub-kicker">Tu Letterboxd privado</p>
+                        <h2>Un videoclub personal para guardar lo visto, lo pendiente y lo que quieres ver.</h2>
+                        <p id="videoclub-headline" class="videoclub-muted">Preparando la videoteca...</p>
+                    </div>
+                    <div class="videoclub-hero-stats">
+                        <article class="videoclub-stat">
+                            <span>Total</span>
+                            <strong id="videoclub-total-stat">0</strong>
+                        </article>
+                        <article class="videoclub-stat">
+                            <span>Vistas</span>
+                            <strong id="videoclub-watched-stat">0</strong>
+                        </article>
+                        <article class="videoclub-stat">
+                            <span>Quiero ver</span>
+                            <strong id="videoclub-watchlist-stat">0</strong>
+                        </article>
+                        <article class="videoclub-stat">
+                            <span>Favoritas</span>
+                            <strong id="videoclub-favorites-stat">0</strong>
+                        </article>
+                    </div>
+                </section>
+
+                <section class="videoclub-search-card">
+                    <div class="videoclub-search-row">
+                        <input type="text" id="movie-search-input" class="videoclub-input" placeholder="Busca una película: Alien, Drive, Perfect Blue...">
+                        <button type="button" class="btn btn-primary" onclick="searchMovies()">Buscar</button>
+                        <button type="button" class="btn" onclick="toggleManualMoviePanel()">Añadir manual</button>
+                    </div>
+                    <div id="movie-search-status" class="videoclub-muted">Puedes buscar o añadir una peli manualmente.</div>
+                    <div id="manual-movie-panel" class="manual-movie-panel hidden">
+                        <div class="manual-movie-grid">
+                            <input type="text" id="manual-movie-title" class="videoclub-input" placeholder="Título">
+                            <input type="number" id="manual-movie-year" class="videoclub-input" placeholder="Año" min="1888" max="2100">
+                            <input type="text" id="manual-movie-creator" class="videoclub-input" placeholder="Director / estudio">
+                            <input type="text" id="manual-movie-genre" class="videoclub-input" placeholder="Género">
+                            <input type="text" id="manual-movie-poster" class="videoclub-input" placeholder="URL póster (opcional)">
+                            <select id="manual-movie-status" class="videoclub-input">
+                                <option value="watchlist">Quiero ver</option>
+                                <option value="pending">Pendiente</option>
+                                <option value="watching">Viendo</option>
+                                <option value="watched">Vista</option>
+                                <option value="rewatch">Rewatch</option>
+                            </select>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="addManualMovie()">Guardar película</button>
+                    </div>
+                    <div id="movie-search-results" class="movie-search-results"></div>
+                </section>
+
+                <section class="videoclub-library-card">
+                    <div class="videoclub-library-header">
+                        <div>
+                            <p class="videoclub-kicker">Tu videoteca</p>
+                            <h3>Películas registradas</h3>
+                        </div>
+                        <div class="videoclub-filter-row">
+                            <select id="videoclub-status-filter" class="videoclub-input" onchange="setVideoclubStatusFilter(this.value)">
+                                <option value="all">Todos los estados</option>
+                                <option value="watchlist">Quiero ver</option>
+                                <option value="pending">Pendiente</option>
+                                <option value="watching">Viendo</option>
+                                <option value="watched">Vista</option>
+                                <option value="rewatch">Rewatch</option>
+                                <option value="favorites">Favoritas</option>
+                            </select>
+                            <select id="videoclub-sort-select" class="videoclub-input" onchange="setVideoclubSort(this.value)">
+                                <option value="updated-desc">Más recientes</option>
+                                <option value="title-asc">Título A-Z</option>
+                                <option value="year-desc">Año más reciente</option>
+                                <option value="rating-desc">Mejor valoradas</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="videoclub-grid" class="videoclub-grid"></div>
+                </section>
+            </main>
+        </div>
+    </div>
+
+    <div id="videoclub-modal" class="videoclub-modal hidden" aria-hidden="true">
+        <div class="videoclub-modal-card" role="dialog" aria-modal="true" aria-labelledby="videoclub-modal-title">
+            <button type="button" class="videoclub-close-btn" onclick="closeVideoclubModal()" aria-label="Cerrar">✕</button>
+            <div class="videoclub-modal-layout">
+                <aside class="videoclub-modal-poster">
+                    <img id="videoclub-modal-image" alt="">
+                </aside>
+                <section class="videoclub-modal-copy">
+                    <div class="videoclub-modal-header">
+                        <div>
+                            <p id="videoclub-modal-meta" class="videoclub-muted"></p>
+                            <h3 id="videoclub-modal-title">Película</h3>
+                            <p id="videoclub-modal-subtitle" class="videoclub-muted"></p>
+                        </div>
+                    </div>
+
+                    <div class="videoclub-edit-grid">
+                        <label>
+                            Estado
+                            <select id="videoclub-edit-status" class="videoclub-input">
+                                <option value="watchlist">Quiero ver</option>
+                                <option value="pending">Pendiente</option>
+                                <option value="watching">Viendo</option>
+                                <option value="watched">Vista</option>
+                                <option value="rewatch">Rewatch</option>
+                            </select>
+                        </label>
+                        <label>
+                            Nota
+                            <select id="videoclub-edit-rating" class="videoclub-input">
+                                <option value="0">Sin nota</option>
+                                <option value="1">1/5</option>
+                                <option value="2">2/5</option>
+                                <option value="3">3/5</option>
+                                <option value="4">4/5</option>
+                                <option value="5">5/5</option>
+                            </select>
+                        </label>
+                        <label>
+                            Fecha vista
+                            <input type="date" id="videoclub-edit-date" class="videoclub-input">
+                        </label>
+                        <label class="videoclub-favorite-toggle">
+                            <input type="checkbox" id="videoclub-edit-favorite">
+                            Favorita
+                        </label>
+                    </div>
+
+                    <label class="videoclub-note-field">
+                        Nota personal
+                        <textarea id="videoclub-edit-notes" class="videoclub-textarea" placeholder="Tu comentario, recuerdo o por qué quieres verla..."></textarea>
+                    </label>
+
+                    <div class="videoclub-modal-actions">
+                        <button type="button" class="btn btn-danger" onclick="deleteVideoclubMovie()">Borrar</button>
+                        <button type="button" class="btn btn-primary" onclick="saveVideoclubMovieEdits()">Guardar cambios</button>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1408.0.min.js"></script>
+    <script src="shell.js?v=20260320b"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js?v=20260320b').catch(() => {});
+            });
+        }
+    </script>
+    <script src="videoclub.js?v=20260320b"></script>
+</body>
+</html>

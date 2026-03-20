@@ -1,10 +1,22 @@
-const CACHE_VERSION = 'life-savings-v20260320a';
+const CACHE_VERSION = 'life-savings-v20260320b';
 const APP_SHELL = [
     './',
     './index.html',
-    './index.html?v=20260320a',
-    './style.css?v=20260320a',
-    './script.js?v=20260320a',
+    './videoclub.html',
+    './style.css',
+    './shell.css',
+    './videoclub.css',
+    './script.js',
+    './shell.js',
+    './videoclub.js',
+    './index.html?v=20260320b',
+    './videoclub.html?v=20260320b',
+    './style.css?v=20260320b',
+    './shell.css?v=20260320b',
+    './videoclub.css?v=20260320b',
+    './script.js?v=20260320b',
+    './shell.js?v=20260320b',
+    './videoclub.js?v=20260320b',
     './manifest.json',
     './icon-192.png',
     './icon-512.png',
@@ -36,6 +48,7 @@ function isApiRequest(requestUrl) {
         'api.scryfall.com',
         'cheapshark.com',
         'store.steampowered.com',
+        'itunes.apple.com',
         'fonts.googleapis.com',
         'fonts.gstatic.com',
         'cdn.jsdelivr.net',
@@ -43,14 +56,20 @@ function isApiRequest(requestUrl) {
     ].some((host) => requestUrl.hostname.includes(host));
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, fallbackUrl = null) {
     const cache = await caches.open(CACHE_VERSION);
     try {
         const fresh = await fetch(request);
         if (request.method === 'GET') cache.put(request, fresh.clone());
         return fresh;
     } catch {
-        return await cache.match(request) || await cache.match('./index.html');
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        if (fallbackUrl) {
+            const fallback = await cache.match(fallbackUrl);
+            if (fallback) return fallback;
+        }
+        return Response.error();
     }
 }
 
@@ -70,7 +89,10 @@ self.addEventListener('fetch', (event) => {
     const url = new URL(request.url);
 
     if (request.mode === 'navigate') {
-        event.respondWith(networkFirst(request));
+        const fallbackUrl = url.pathname.includes('videoclub')
+            ? './videoclub.html'
+            : './index.html';
+        event.respondWith(networkFirst(request, fallbackUrl));
         return;
     }
 
